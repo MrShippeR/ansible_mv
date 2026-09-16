@@ -1,0 +1,10 @@
+optiplex/vars
+docker_user: shipper
+docker_data_dir: /media/wdred/docker
+db_password: "{{ vault_db_password }}"
+
+optiplex/vault
+vault_db_password: "moje-tajne-heslo"
+
+a v playbooku
+{{ db_password }}

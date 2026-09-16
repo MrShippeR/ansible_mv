@@ -1,0 +1,13 @@
+---
+- name: Set default bashrc content to my usecase
+  hosts: l340
+  become: false
+
+  tasks:
+  - name: Set default EDITOR to nano
+    blockinfile:
+      path: "~/.bashrc"
+      prepend_newline: true
+      content: "export EDITOR=nano"
+      state: present
+

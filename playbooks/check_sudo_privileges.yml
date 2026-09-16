@@ -1,0 +1,14 @@
+---
+- name: Check sudo privileges
+  hosts: homelab
+  become: true
+
+  tasks:
+  - name: Check if user is root.
+    ansible.builtin.command:
+      cmd: whoami
+    register: whoami_result
+
+  - name: Display whoami result
+    ansible.builtin.debug:
+      msg: "Result of whoami: {{ whoami_result.stdout }}"
