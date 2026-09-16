@@ -1,0 +1,17 @@
+[optiplex]
+192.168.0.2
+
+[homelab]
+192.168.0.4
+
+[l340]
+192.168.0.5
+
+[backup]
+192.168.0.6
+
+[vostro14]
+192.168.0.7
+
+[all:vars]
+ansible_python_interpreter=/usr/bin/python3
