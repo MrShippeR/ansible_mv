@@ -1,6 +1,6 @@
 ---
 - name: Check sudo privileges
-  hosts: ubuntu_os
+  hosts: all
   become: true
 
   tasks:

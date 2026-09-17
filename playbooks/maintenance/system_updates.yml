@@ -2,8 +2,6 @@
 ---
 - name: Update packages and OS on Ubuntu based servers
   hosts: all
-  strategy: linear
-  serial: 5
   become: true
   #serial: "25%"
   #max_fail_percentage: 10
