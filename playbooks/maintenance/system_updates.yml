@@ -1,0 +1,50 @@
+# https://oneuptime.com/blog/post/2026-02-21-how-to-update-all-packages-with-the-ansible-apt-module/view
+---
+- name: Update packages and OS on Ubuntu based servers
+  hosts: all
+  strategy: linear
+  serial: 5
+  become: true
+  #serial: "25%"
+  #max_fail_percentage: 10
+
+  tasks:
+    - name: Update repository cache
+      ansible.builtin.apt:
+        update_cache: true
+
+    - name: Upgrade packages
+      ansible.builtin.apt:
+        upgrade: true
+        update_cache: false
+      register: packages_upgrade
+
+    - name: Display package upgrade result if changed
+      ansible.builtin.debug:
+        var: packages_upgrade
+      when: packages_upgrade.changed
+
+    - name: Perform dist-upgrade
+      ansible.builtin.apt:
+        upgrade: dist
+        update_cache: false
+
+    - name: Remove old dependencies
+      ansible.builtin.apt:
+        autoremove: true
+        purge: true
+
+    - name: Clean apt cache
+      ansible.builtin.apt:
+        autoclean: true
+
+    - name: Check if reboot is required
+      ansible.builtin.stat:
+        path: /var/run/reboot-required
+      register: reboot_required
+
+    - name: Display reboot if required
+      ansible.builtin.debug: 
+        msg: "Reboot is required." 
+      when: reboot_required.stat.exists
+

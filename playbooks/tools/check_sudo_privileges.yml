@@ -1,6 +1,6 @@
 ---
 - name: Check sudo privileges
-  hosts: homelab
+  hosts: ubuntu_os
   become: true
 
   tasks:
