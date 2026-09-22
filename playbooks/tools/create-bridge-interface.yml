@@ -1,0 +1,665 @@
+---
+- name: Create KVM bridge interface
+  hosts: all
+  become: true
+  gather_facts: true
+
+  vars:
+    bridge_name: br0
+
+    # Leave empty for automatic detection.
+    # If more than one suitable interface is detected,
+    # set this variable manually.
+    #
+    # Example:
+    # bridge_interface_manual: enp0s31f6
+    bridge_interface_manual: ""
+
+    bridge_script: /usr/local/sbin/ansible-create-bridge.sh
+    bridge_unit: ansible-create-bridge
+
+  tasks:
+
+    # ================================================================
+    # PRE-FLIGHT CHECKS
+    # ================================================================
+
+    - name: Check operating system
+      ansible.builtin.assert:
+        that:
+          - ansible_facts.os_family == "Debian"
+        fail_msg: >-
+          Unsupported operating system:
+          {{ ansible_facts.distribution }}
+          {{ ansible_facts.distribution_version }}.
+
+          This playbook supports Debian-based systems
+          such as Debian, Ubuntu and Zorin OS.
+        success_msg: >-
+          Supported operating system:
+          {{ ansible_facts.distribution }}
+          {{ ansible_facts.distribution_version }}
+
+    - name: Check that nmcli is installed
+      ansible.builtin.command:
+        cmd: nmcli --version
+      register: nmcli_version
+      changed_when: false
+      failed_when: false
+
+    - name: Stop if nmcli is not installed
+      ansible.builtin.fail:
+        msg: >-
+          nmcli was not found.
+
+          NetworkManager must be installed before running
+          this playbook.
+      when: nmcli_version.rc != 0
+
+    # ================================================================
+    # DETECT NETWORK INTERFACE
+    # ================================================================
+
+    - name: Get NetworkManager devices
+      ansible.builtin.command:
+        cmd: nmcli -t -f DEVICE,TYPE,STATE device status
+      register: nmcli_devices
+      changed_when: false
+
+    - name: Find active enp Ethernet interfaces
+      ansible.builtin.set_fact:
+        detected_bridge_interfaces: >-
+          {{
+            nmcli_devices.stdout_lines
+            | map('split', ':')
+            | selectattr('1', 'equalto', 'ethernet')
+            | selectattr('2', 'equalto', 'connected')
+            | selectattr('0', 'match', '^enp')
+            | map('first')
+            | list
+          }}
+
+    - name: Stop if no suitable interface was detected
+      ansible.builtin.fail:
+        msg: >-
+          No active Ethernet interface starting with 'enp'
+          was detected.
+
+          {{ nmcli_devices.stdout_lines | join(', ') }}
+
+          Set 'bridge_interface_manual' manually if necessary.
+      when:
+        - bridge_interface_manual | length == 0
+        - detected_bridge_interfaces | length == 0
+
+    - name: Stop if multiple suitable interfaces were detected
+      ansible.builtin.fail:
+        msg: >-
+          Multiple active Ethernet interfaces starting with 'enp'
+          were detected:
+
+          {{ detected_bridge_interfaces | join(', ') }}
+
+          Set 'bridge_interface_manual' manually if necessary.
+      when:
+        - bridge_interface_manual | length == 0
+        - detected_bridge_interfaces | length > 1
+
+    - name: Select physical network interface
+      ansible.builtin.set_fact:
+        bridge_interface: >-
+          {{
+            bridge_interface_manual
+            if bridge_interface_manual | length > 0
+            else detected_bridge_interfaces[0]
+          }}
+
+    # ================================================================
+    # GET PHYSICAL INTERFACE MAC ADDRESS
+    # ================================================================
+
+    - name: Get MAC address of physical interface
+      ansible.builtin.command:
+        cmd: cat /sys/class/net/{{ bridge_interface }}/address
+      register: bridge_interface_mac
+      changed_when: false
+
+    - name: Store physical interface MAC address
+      ansible.builtin.set_fact:
+        bridge_mac_address: "{{ bridge_interface_mac.stdout | trim }}"
+
+    - name: Verify physical interface MAC address
+      ansible.builtin.assert:
+        that:
+          - bridge_mac_address is match('^[0-9a-fA-F]{2}(:[0-9a-fA-F]{2}){5}$')
+        fail_msg: >-
+          Could not determine a valid MAC address for
+          {{ bridge_interface }}.
+
+          Detected value:
+          {{ bridge_mac_address }}
+
+    # ================================================================
+    # CHECK EXISTING BRIDGE
+    # ================================================================
+
+    - name: Check whether {{ bridge_name }} already exists
+      ansible.builtin.command:
+        cmd: nmcli -t -f DEVICE,TYPE device status
+      register: nmcli_existing_devices
+      changed_when: false
+
+    - name: Stop if bridge already exists
+      ansible.builtin.fail:
+        msg: >-
+          Network bridge '{{ bridge_name }}' already exists.
+      when: >
+        nmcli_existing_devices.stdout_lines
+        | select('match', '^' ~ bridge_name ~ ':')
+        | list
+        | length > 0
+
+    # ================================================================
+    # IDENTIFY CURRENT CONNECTION PROFILE
+    # ================================================================
+
+    - name: Get active connection profile
+      ansible.builtin.command:
+        cmd: >-
+          nmcli -g GENERAL.CONNECTION device show
+          {{ bridge_interface }}
+      register: active_connection
+      changed_when: false
+
+    - name: Validate active connection profile
+      ansible.builtin.assert:
+        that:
+          - active_connection.stdout | trim | length > 0
+          - active_connection.stdout | trim != "--"
+        fail_msg: >-
+          Could not determine the active NetworkManager
+          connection profile for {{ bridge_interface }}.
+
+    - name: Store active connection profile
+      ansible.builtin.set_fact:
+        current_connection: "{{ active_connection.stdout | trim }}"
+
+    # ================================================================
+    # VERIFY DHCP AND AUTOMATIC DNS
+    # ================================================================
+
+    - name: Get current IPv4 method
+      ansible.builtin.command:
+        cmd: nmcli -g ipv4.method connection show "{{ current_connection }}"
+      register: current_ipv4_method
+      changed_when: false
+
+    - name: Verify IPv4 uses DHCP
+      ansible.builtin.assert:
+        that:
+          - current_ipv4_method.stdout | trim == "auto"
+        fail_msg: >-
+          IPv4 on connection '{{ current_connection }}' is not configured
+          for DHCP.
+
+          Current IPv4 method:
+          {{ current_ipv4_method.stdout | trim }}
+
+          This playbook only supports IPv4 DHCP configuration.
+          No changes have been made.
+
+    - name: Get current IPv4 DNS mode
+      ansible.builtin.command:
+        cmd: nmcli -g ipv4.ignore-auto-dns connection show "{{ current_connection }}"
+      register: current_ipv4_ignore_auto_dns
+      changed_when: false
+
+    - name: Verify IPv4 DNS is automatic
+      ansible.builtin.assert:
+        that:
+          - current_ipv4_ignore_auto_dns.stdout | trim == "no"
+        fail_msg: >-
+          IPv4 DNS on connection '{{ current_connection }}' is not
+          configured for automatic DNS obtained from DHCP.
+
+          ipv4.ignore-auto-dns:
+          {{ current_ipv4_ignore_auto_dns.stdout | trim }}
+
+          This playbook requires automatic DNS configuration.
+          No changes have been made.
+
+    # ================================================================
+    # DISPLAY PLAN
+    # ================================================================
+
+    - name: Get current active IPv4 configuration
+      ansible.builtin.command:
+        cmd: >-
+          nmcli -g IP4.ADDRESS,IP4.GATEWAY,IP4.DNS
+          device show {{ bridge_interface }}
+      register: current_active_ipv4
+      changed_when: false
+
+    - name: Display planned network migration
+      ansible.builtin.debug:
+        msg:
+          - "======================================================"
+          - "KVM BRIDGE CONFIGURATION"
+          - "======================================================"
+          - ""
+          - "Operating system:"
+          - "  {{ ansible_facts.distribution }} {{ ansible_facts.distribution_version }}"
+          - ""
+          - "Physical interface:"
+          - "  {{ bridge_interface }}"
+          - ""
+          - "Physical interface MAC:"
+          - "  {{ bridge_mac_address }}"
+          - ""
+          - "Bridge MAC:"
+          - "  {{ bridge_mac_address }}"
+          - ""
+          - "Current NetworkManager profile:"
+          - "  {{ current_connection }}"
+          - ""
+          - "IPv4 configuration:"
+          - "  DHCP"
+          - ""
+          - "IPv4 DNS:"
+          - "  Automatic (DHCP)"
+          - ""
+          - "Current active IPv4 configuration:"
+          - "{{ current_active_ipv4.stdout_lines | map('regex_replace', '^', '  ') | list }}"
+          - ""
+          - "Planned configuration:"
+          - "  {{ bridge_name }}"
+          - "    ├── MAC: {{ bridge_mac_address }}"
+          - "    ├── IPv4: DHCP"
+          - "    ├── IPv6: auto"
+          - "    └── {{ bridge_interface }}"
+          - ""
+          - "The physical interface will become a port"
+          - "of the bridge."
+          - ""
+          - "The host's DHCP and DNS configuration will move"
+          - "from {{ bridge_interface }} to {{ bridge_name }}."
+          - ""
+          - "Purpose:"
+          - "  KVM bridged networking."
+          - ""
+          - "SSH connectivity may be temporarily interrupted."
+          - "The migration will therefore run independently"
+          - "from the Ansible SSH session."
+          - ""
+          - "======================================================"
+
+    # ================================================================
+    # USER CONFIRMATION
+    # ================================================================
+
+    - name: Confirm network migration
+      ansible.builtin.pause:
+        prompt: |
+          The network configuration above will be changed.
+
+          Continue with creation of {{ bridge_name }}?
+          Type 'yes' to continue or anything else to cancel
+      register: bridge_confirmation
+
+    - name: Stop if network migration was not confirmed
+      ansible.builtin.fail:
+        msg: "Network bridge creation cancelled by user."
+      when:
+        - bridge_confirmation.user_input | lower != "yes"
+
+    # ================================================================
+    # CREATE MIGRATION SCRIPT
+    # ================================================================
+
+    - name: Create bridge migration script
+      ansible.builtin.copy:
+        dest: "{{ bridge_script }}"
+        owner: root
+        group: root
+        mode: "0750"
+        content: |
+          #!/bin/bash
+          #
+          # Generated by Ansible.
+          # This script intentionally runs independently from SSH.
+          #
+
+          set -u
+
+          BRIDGE="{{ bridge_name }}"
+          BRIDGE_MAC_ADDRESS="{{ bridge_mac_address }}"
+          INTERFACE="{{ bridge_interface }}"
+          OLD_CONNECTION="{{ current_connection }}"
+
+          LOG="/var/log/ansible-create-bridge.log"
+
+          exec >>"$LOG" 2>&1
+
+          echo
+          echo "======================================================"
+          echo "$(date '+%Y-%m-%d %H:%M:%S')"
+          echo "Starting KVM bridge migration"
+          echo "Bridge      : $BRIDGE"
+          echo "Bridge MAC  : $BRIDGE_MAC_ADDRESS"
+          echo "Interface   : $INTERFACE"
+          echo "Old profile : $OLD_CONNECTION"
+          echo "======================================================"
+
+          #
+          # Wait until NetworkManager is available.
+          #
+          for i in {1..30}; do
+              if nmcli general status >/dev/null 2>&1; then
+                  break
+              fi
+              sleep 1
+          done
+
+          #
+          # Safety check.
+          #
+          if nmcli -t -f DEVICE device status | grep -Fxq "$BRIDGE"; then
+              echo "ERROR: $BRIDGE already exists."
+              exit 10
+          fi
+
+          #
+          # Create bridge connection.
+          #
+          echo "Creating bridge $BRIDGE..."
+
+          nmcli connection add \
+              type bridge \
+              ifname "$BRIDGE" \
+              con-name "$BRIDGE"
+
+          if [ $? -ne 0 ]; then
+              echo "ERROR: Failed to create bridge."
+              exit 20
+          fi
+
+          #
+          # Configure bridge MAC address.
+          #
+          echo "Configuring bridge MAC address..."
+
+          nmcli connection modify "$BRIDGE" \
+              802-3-ethernet.cloned-mac-address "$BRIDGE_MAC_ADDRESS"
+
+          if [ $? -ne 0 ]; then
+              echo "ERROR: Failed to configure bridge MAC address."
+              nmcli connection delete "$BRIDGE"
+              exit 25
+          fi
+
+          #
+          # IPv4 is always DHCP.
+          #
+          echo "Configuring IPv4 DHCP on bridge..."
+
+          nmcli connection modify "$BRIDGE" \
+              ipv4.method auto \
+              ipv4.ignore-auto-dns no
+
+          if [ $? -ne 0 ]; then
+              echo "ERROR: Failed to configure IPv4 DHCP."
+              nmcli connection delete "$BRIDGE"
+              exit 30
+          fi
+
+          #
+          # IPv6 is not currently used, but leave it configured
+          # for automatic addressing and automatic DNS.
+          #
+          echo "Configuring IPv6 automatic addressing and DNS..."
+
+          nmcli connection modify "$BRIDGE" \
+              ipv6.method auto \
+              ipv6.ignore-auto-dns no
+
+          if [ $? -ne 0 ]; then
+              echo "ERROR: Failed to configure IPv6."
+              nmcli connection delete "$BRIDGE"
+              exit 31
+          fi
+
+          #
+          # Make the old Ethernet connection a bridge port.
+          #
+          echo "Configuring $INTERFACE as bridge port..."
+
+          nmcli connection modify "$OLD_CONNECTION" \
+              connection.master "$BRIDGE" \
+              connection.slave-type bridge \
+              ipv4.method disabled \
+              ipv6.method disabled
+
+          if [ $? -ne 0 ]; then
+              echo "ERROR: Failed to configure bridge port."
+
+              nmcli connection delete "$BRIDGE"
+
+              exit 40
+          fi
+
+          #
+          # Bring down the old connection before activating
+          # the bridge. This is the point where SSH may disappear.
+          #
+          echo "Activating bridge..."
+
+          nmcli connection down "$OLD_CONNECTION" || true
+
+          sleep 2
+
+          nmcli connection up "$BRIDGE"
+
+          if [ $? -ne 0 ]; then
+              echo "ERROR: Failed to activate bridge."
+
+              #
+              # Try to restore the old connection.
+              #
+              nmcli connection modify "$OLD_CONNECTION" \
+                  connection.master "" \
+                  connection.slave-type "" \
+                  ipv4.method auto \
+                  ipv6.method auto
+
+              nmcli connection up "$OLD_CONNECTION" || true
+
+              exit 50
+          fi
+
+          #
+          # Explicitly activate the bridge port.
+          #
+          nmcli connection up "$OLD_CONNECTION"
+
+          #
+          # Give NetworkManager a moment to settle and obtain
+          # the DHCP lease.
+          #
+          sleep 5
+
+          echo
+          echo "Final NetworkManager state:"
+          nmcli device status
+
+          echo
+          echo "Final connection state:"
+          nmcli connection show
+
+          echo
+          echo "Bridge details:"
+          nmcli connection show "$BRIDGE"
+
+          echo
+          echo "IP addresses:"
+          ip addr show "$BRIDGE"
+
+          echo
+          echo "Routes:"
+          ip route
+
+          echo
+          echo "DNS configuration:"
+          resolvectl status "$BRIDGE" || true
+
+          echo
+          echo "======================================================"
+          echo "$(date '+%Y-%m-%d %H:%M:%S')"
+          echo "Bridge migration finished."
+          echo "======================================================"
+
+          exit 0
+
+    # ================================================================
+    # START MIGRATION INDEPENDENTLY OF SSH
+    # ================================================================
+
+    - name: Check whether bridge migration is already running
+      ansible.builtin.command:
+        cmd: systemctl is-active "{{ bridge_unit }}"
+      register: bridge_unit_state
+      failed_when: false
+      changed_when: false
+
+    - name: Stop if bridge migration is already running
+      ansible.builtin.fail:
+        msg: >-
+          Systemd unit {{ bridge_unit }} is already running.
+          Refusing to start another network migration.
+      when: bridge_unit_state.stdout | trim == "active"
+
+    - name: Start bridge migration using systemd
+      ansible.builtin.command:
+        cmd: >-
+          systemd-run
+          --unit={{ bridge_unit }}
+          --collect
+          --property=Type=oneshot
+          {{ bridge_script }}
+      register: bridge_systemd_start
+      changed_when: true
+
+    - name: Display migration start information
+      ansible.builtin.debug:
+        msg:
+          - "Bridge migration has been started independently of SSH."
+          - "Systemd unit: {{ bridge_unit }}"
+          - "Log file: /var/log/ansible-create-bridge.log"
+          - ""
+          - "The SSH connection may now be interrupted while NetworkManager"
+          - "moves the IP configuration from {{ bridge_interface }}"
+          - "to {{ bridge_name }}."
+
+    # ================================================================
+    # WAIT FOR HOST TO BECOME AVAILABLE AGAIN
+    # ================================================================
+
+    - name: Wait for SSH connection to return
+      ansible.builtin.wait_for_connection:
+        delay: 5
+        timeout: 120
+        sleep: 5
+      delegate_to: "{{ inventory_hostname }}"
+
+    # ================================================================
+    # VERIFY RESULT
+    # ================================================================
+
+    - name: Check bridge device
+      ansible.builtin.command:
+        cmd: nmcli -t -f DEVICE,TYPE,STATE device status
+      register: final_devices
+      changed_when: false
+
+    - name: Show final network devices
+      ansible.builtin.debug:
+        var: final_devices.stdout_lines
+
+    - name: Check bridge connection
+      ansible.builtin.command:
+        cmd: nmcli -g GENERAL.STATE connection show "{{ bridge_name }}"
+      register: final_bridge_state
+      changed_when: false
+
+    - name: Get bridge IP addresses
+      ansible.builtin.command:
+        cmd: ip -4 -o addr show dev "{{ bridge_name }}"
+      register: final_bridge_ip
+      changed_when: false
+
+    - name: Get physical interface IP addresses
+      ansible.builtin.command:
+        cmd: ip -4 -o addr show dev "{{ bridge_interface }}"
+      register: final_interface_ip
+      changed_when: false
+
+    - name: Get default route
+      ansible.builtin.command:
+        cmd: ip -4 route show default
+      register: final_default_route
+      changed_when: false
+
+    - name: Show final bridge configuration
+      ansible.builtin.debug:
+        msg:
+          - "======================================================"
+          - "FINAL KVM BRIDGE CONFIGURATION"
+          - "======================================================"
+          - ""
+          - "Bridge:"
+          - "  {{ bridge_name }}"
+          - ""
+          - "Bridge state:"
+          - "  {{ final_bridge_state.stdout | trim }}"
+          - ""
+          - "Bridge IPv4:"
+          - "  {{ final_bridge_ip.stdout | trim }}"
+          - ""
+          - "Physical interface:"
+          - "  {{ bridge_interface }}"
+          - ""
+          - "Physical interface IPv4:"
+          - "  {{ final_interface_ip.stdout | trim | default('(none)', true) }}"
+          - ""
+          - "Default route:"
+          - "  {{ final_default_route.stdout | trim }}"
+          - ""
+          - "======================================================"
+
+    - name: Verify bridge has IPv4 address
+      ansible.builtin.assert:
+        that:
+          - final_bridge_ip.stdout | trim | length > 0
+        fail_msg: >-
+          Bridge {{ bridge_name }} does not have an IPv4 address.
+          Check /var/log/ansible-create-bridge.log.
+        success_msg: >-
+          Bridge {{ bridge_name }} has an IPv4 address.
+
+    - name: Verify physical interface has no IPv4 address
+      ansible.builtin.assert:
+        that:
+          - final_interface_ip.stdout | trim | length == 0
+        fail_msg: >-
+          Physical interface {{ bridge_interface }} still has an IPv4 address.
+          Expected topology is IP -> {{ bridge_name }} -> {{ bridge_interface }}.
+        success_msg: >-
+          Physical interface {{ bridge_interface }} has no IPv4 address.
+
+    - name: Verify default route exists
+      ansible.builtin.assert:
+        that:
+          - final_default_route.stdout | trim | length > 0
+        fail_msg: >-
+          No IPv4 default route was found after bridge migration.
+        success_msg:
+          "IPv4 default route is present."

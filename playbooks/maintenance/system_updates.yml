@@ -41,8 +41,7 @@
         path: /var/run/reboot-required
       register: reboot_required
 
-    - name: Display reboot if required
-      ansible.builtin.debug: 
-        msg: "Reboot is required." 
-      when: reboot_required.stat.exists
+    - name: Report reboot requirement
+      ansible.builtin.debug:
+        msg: "{{ 'Reboot is required.' if reboot_required.stat.exists else 'Reboot is not required.' }}"
 
