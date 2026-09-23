@@ -1,0 +1,234 @@
+#!/bin/bash
+
+# This script is meant to be uploaded to targeted machine and be launched localy. With infrormations from playbook script will make changes to
+# system connection to add bridge interface before enp* interface. Virtualization KVM will be able to connect same LAN network.
+#
+#                    router
+#                      │
+#                  physical NIC
+#                      │
+#                ┌─────br0─────┐
+#                │             │
+#               host          KVM
+#            (enp0s31f6)     (vr0)
+#           192.168.0.4     192.168.0.18
+
+
+set -u
+
+BRIDGE="{{ bridge_name }}"
+BRIDGE_MAC_ADDRESS="{{ bridge_mac_address }}"
+INTERFACE="{{ bridge_interface }}"
+OLD_CONNECTION="{{ current_connection }}"
+
+LOG="/var/log/ansible-create-bridge.log"
+
+exec >>"$LOG" 2>&1
+
+
+# Functions
+show_network_manager_status() {
+    echo "NetworkManager device status:"
+    nmcli device status
+
+    echo
+    echo "IP a:"
+    ip a
+
+    echo
+    echo "IP route:"
+    ip route
+
+    #echo "Bridge connection:"
+    #nmcli connection show "$BRIDGE" || true
+
+    echo
+    echo "Bridge link:"
+    ip link show "$BRIDGE" || true
+}
+
+restore_old_connection() {
+    local exit_code="${1:-1}"
+    local reason="${2:-Unknown error}"
+
+    echo
+    echo "======================================================"
+    echo "ERROR: $reason"
+    echo "======================================================"
+    echo "Summary before restoring..."
+
+    show_network_manager_status
+    echo
+    echo
+
+    echo "Restoring original connection configuration..."
+    
+    nmcli connection modify "$OLD_CONNECTION" \
+        connection.master "" \
+        connection.slave-type "" \
+        ipv4.method auto \
+        ipv4.ignore-auto-dns no \
+        ipv6.method auto \
+        ipv6.ignore-auto-dns no
+
+    echo "Activating original connection..."
+
+    if nmcli connection up "$OLD_CONNECTION"; then
+        echo "Original connection $OLD_CONNECTION restored."
+    else
+        echo "ERROR: Failed to activate original connection."
+    fi
+
+    if nmcli -t -f NAME connection show | grep -Fxq "$BRIDGE"; then
+        echo "Removing bridge connection $BRIDGE..."
+
+        nmcli connection down "$BRIDGE" 2>/dev/null || true
+
+        if nmcli connection delete "$BRIDGE"; then
+            echo "Bridge connection $BRIDGE removed."
+        else
+            echo "ERROR: Failed to remove bridge connection $BRIDGE."
+        fi
+    fi
+
+    echo
+    echo "======================================================"
+    echo "Network migration aborted."
+    echo "Original connection: $OLD_CONNECTION"
+    echo "Exit code: $exit_code"
+    echo "======================================================"
+
+    exit "$exit_code"
+}
+
+
+# Main program
+
+echo
+echo "======================================================"
+echo "$(date '+%Y-%m-%d %H:%M:%S')"
+echo "Starting network migration to bridged connection for KVM"
+echo "Bridge      : $BRIDGE"
+echo "Bridge MAC  : $BRIDGE_MAC_ADDRESS"
+echo "Interface   : $INTERFACE"
+echo "Old profile : $OLD_CONNECTION"
+echo "======================================================"
+
+
+if nmcli -t -f DEVICE device status | grep -Fxq "$BRIDGE"; then
+    echo "ERROR: $BRIDGE already exists."
+    exit 10
+fi
+
+
+echo "Creating bridge $BRIDGE..."
+if ! nmcli connection add \
+    type bridge \
+    ifname "$BRIDGE" \
+    con-name "$BRIDGE"; then
+
+    echo "ERROR: Failed to create bridge."
+    exit 20
+fi
+
+
+echo "Configuring bridge MAC address..."
+if ! nmcli connection modify "$BRIDGE" \
+    802-3-ethernet.cloned-mac-address "$BRIDGE_MAC_ADDRESS"; then
+
+    restore_old_connection 25 "Failed to configure bridge MAC address."
+fi
+
+
+echo "Configuring bridge to use IPv4 DHCP and DNS..."
+if ! nmcli connection modify "$BRIDGE" \
+    ipv4.method auto \
+    ipv4.ignore-auto-dns no; then
+
+    restore_old_connection 30 "Failed to configure IPv4 DHCP."
+fi
+
+
+echo "Configuring bridge to use IPv6 DHCP and DNS..."
+if ! nmcli connection modify "$BRIDGE" \
+    ipv6.method auto \
+    ipv6.ignore-auto-dns no; then
+
+    restore_old_connection 31 "Failed to configure IPv6 DHCP."
+fi
+
+
+echo "Configuring $INTERFACE as member of bridge..."
+if ! nmcli connection modify "$OLD_CONNECTION" \
+    connection.master "$BRIDGE" \
+    connection.slave-type bridge; then
+    restore_old_connection 40 "Failed to configure bridge port."
+fi
+
+
+echo "Deactivating old connection $INTERFACE ... SSH will disappear."
+nmcli connection down "$OLD_CONNECTION" || true
+sleep 5
+
+
+echo "Activating bridge..."
+if ! nmcli connection up "$BRIDGE"; then
+    restore_old_connection 50 "Failed to activate bridge."
+fi
+sleep 5
+
+echo
+echo "Waiting for bridge $BRIDGE to become fully UP..."
+BRIDGE_UP=false
+
+for i in {1..30}; do
+    NM_STATE=$(nmcli -g GENERAL.STATE device show "$BRIDGE" 2>/dev/null || true)
+    NM_STATE_CODE=$(echo "$NM_STATE" | awk '{print $1}')
+    LINK_STATE=$(cat "/sys/class/net/$BRIDGE/operstate" 2>/dev/null || true)
+
+    echo "Bridge NetworkManager state: $NM_STATE"
+    echo "Bridge kernel state:        $LINK_STATE"
+
+    if [ "$NM_STATE_CODE" = "100" ] \
+        && [ "$LINK_STATE" = "up" ]; then
+
+        BRIDGE_UP=true
+        break
+    fi
+
+    sleep 5
+done
+
+
+if [ "$BRIDGE_UP" != "true" ]; then
+    restore_old_connection 60 "TIMEOUT: Bridge $BRIDGE did not become fully UP."
+fi
+
+
+echo "Bridge $BRIDGE is fully UP."
+
+
+echo "Activating $OLD_CONNECTION to comunicate thru bridge..."
+if ! nmcli connection up "$OLD_CONNECTION"; then
+    restore_old_connection 70 "Failed to activate bridge port."
+fi
+
+#
+# Give NetworkManager a short moment to settle routes
+# and DNS after DHCP.
+#
+sleep 5
+
+
+echo
+echo "Final NetworkManager state:"
+show_network_manager_status
+
+
+echo
+echo "======================================================"
+echo "$(date '+%Y-%m-%d %H:%M:%S')"
+echo "Bridge migration finished successfully."
+echo "======================================================"
+
+exit 0
