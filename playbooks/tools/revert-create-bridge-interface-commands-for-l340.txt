@@ -1,0 +1,13 @@
+nmcli connection modify "Drátové připojení 2" \
+	connection.master "" \
+        connection.slave-type "" \
+        ipv4.method auto \
+        ipv4.ignore-auto-dns no \
+        ipv6.method auto \
+        ipv6.ignore-auto-dns no
+
+nmcli connection up "Drátové připojení 2"
+
+nmcli connection down br0
+
+nmcli connection delete br0

@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# This script is meant to be uploaded to targeted machine and be launched localy. With infrormations from playbook script will make changes to
-# system connection to add bridge interface before enp* interface. Virtualization KVM will be able to connect same LAN network.
+# This script is meant to be ansible uploaded to targeted machine and be launched localy. With infrormations from playbook script will make changes to
+# system connection to add bridge interface before enp* interface. Virtualization KVM will be able to connect same LAN network after this setup.
 #
 #                    router
 #                      │
@@ -16,10 +16,10 @@
 
 set -u
 
-BRIDGE="{{ bridge_name }}"
-BRIDGE_MAC_ADDRESS="{{ bridge_mac_address }}"
-INTERFACE="{{ bridge_interface }}"
-OLD_CONNECTION="{{ current_connection }}"
+BRIDGE_NAME="{{ bridge_name }}"
+MAC_ADDRESS="{{ mac_address }}"
+ETHERNET_NAME="{{ ethernet_interface_name }}"
+ETHERNET_DESC="{{ ethernet_interface_description }}"
 
 LOG="/var/log/ansible-create-bridge.log"
 
@@ -33,18 +33,16 @@ show_network_manager_status() {
 
     echo
     echo "IP a:"
-    ip a
+    ip a | grep " ${BRIDGE_NAME}:" -A 5
+    ip a | grep " ${ETHERNET_NAME}:" -A 1
 
     echo
     echo "IP route:"
     ip route
 
-    #echo "Bridge connection:"
-    #nmcli connection show "$BRIDGE" || true
-
     echo
     echo "Bridge link:"
-    ip link show "$BRIDGE" || true
+    ip link show "$BRIDGE_NAME" || true
 }
 
 restore_old_connection() {
@@ -63,7 +61,9 @@ restore_old_connection() {
 
     echo "Restoring original connection configuration..."
     
-    nmcli connection modify "$OLD_CONNECTION" \
+    # to get NetworkManager long name $ETHERNET_DESC for restoring original state manually use:
+    # nmcli device status
+    nmcli connection modify "$ETHERNET_DESC" \
         connection.master "" \
         connection.slave-type "" \
         ipv4.method auto \
@@ -73,28 +73,28 @@ restore_old_connection() {
 
     echo "Activating original connection..."
 
-    if nmcli connection up "$OLD_CONNECTION"; then
-        echo "Original connection $OLD_CONNECTION restored."
+    if nmcli connection up "$ETHERNET_DESC"; then
+        echo "Original connection $ETHERNET_DESC restored."
     else
         echo "ERROR: Failed to activate original connection."
     fi
 
-    if nmcli -t -f NAME connection show | grep -Fxq "$BRIDGE"; then
-        echo "Removing bridge connection $BRIDGE..."
+    if nmcli -t -f NAME connection show | grep -Fxq "$BRIDGE_NAME"; then
+        echo "Removing bridge connection $BRIDGE_NAME..."
 
-        nmcli connection down "$BRIDGE" 2>/dev/null || true
+        nmcli connection down "$BRIDGE_NAME" 2>/dev/null || true
 
-        if nmcli connection delete "$BRIDGE"; then
-            echo "Bridge connection $BRIDGE removed."
+        if nmcli connection delete "$BRIDGE_NAME"; then
+            echo "Bridge connection $BRIDGE_NAME removed."
         else
-            echo "ERROR: Failed to remove bridge connection $BRIDGE."
+            echo "ERROR: Failed to remove bridge connection $BRIDGE_NAME."
         fi
     fi
 
     echo
     echo "======================================================"
     echo "Network migration aborted."
-    echo "Original connection: $OLD_CONNECTION"
+    echo "Original connection: $ETHERNET_DESC"
     echo "Exit code: $exit_code"
     echo "======================================================"
 
@@ -108,24 +108,24 @@ echo
 echo "======================================================"
 echo "$(date '+%Y-%m-%d %H:%M:%S')"
 echo "Starting network migration to bridged connection for KVM"
-echo "Bridge      : $BRIDGE"
-echo "Bridge MAC  : $BRIDGE_MAC_ADDRESS"
-echo "Interface   : $INTERFACE"
-echo "Old profile : $OLD_CONNECTION"
+echo "Bridge       : $BRIDGE_NAME"
+echo "MAC adress   : $MAC_ADDRESS"
+echo "Ethernet name: $ETHERNET_NAME"
+echo "Ethernet desc: $ETHERNET_DESC"
 echo "======================================================"
 
 
-if nmcli -t -f DEVICE device status | grep -Fxq "$BRIDGE"; then
-    echo "ERROR: $BRIDGE already exists."
+if nmcli -t -f DEVICE device status | grep -Fxq "$BRIDGE_NAME"; then
+    echo "ERROR: $BRIDGE_NAME already exists."
     exit 10
 fi
 
 
-echo "Creating bridge $BRIDGE..."
+echo "Creating bridge $BRIDGE_NAME..."
 if ! nmcli connection add \
     type bridge \
-    ifname "$BRIDGE" \
-    con-name "$BRIDGE"; then
+    ifname "$BRIDGE_NAME" \
+    con-name "$BRIDGE_NAME"; then
 
     echo "ERROR: Failed to create bridge."
     exit 20
@@ -133,15 +133,15 @@ fi
 
 
 echo "Configuring bridge MAC address..."
-if ! nmcli connection modify "$BRIDGE" \
-    802-3-ethernet.cloned-mac-address "$BRIDGE_MAC_ADDRESS"; then
+if ! nmcli connection modify "$BRIDGE_NAME" \
+    802-3-ethernet.cloned-mac-address "$MAC_ADDRESS"; then
 
     restore_old_connection 25 "Failed to configure bridge MAC address."
 fi
 
 
 echo "Configuring bridge to use IPv4 DHCP and DNS..."
-if ! nmcli connection modify "$BRIDGE" \
+if ! nmcli connection modify "$BRIDGE_NAME" \
     ipv4.method auto \
     ipv4.ignore-auto-dns no; then
 
@@ -150,7 +150,7 @@ fi
 
 
 echo "Configuring bridge to use IPv6 DHCP and DNS..."
-if ! nmcli connection modify "$BRIDGE" \
+if ! nmcli connection modify "$BRIDGE_NAME" \
     ipv6.method auto \
     ipv6.ignore-auto-dns no; then
 
@@ -158,33 +158,43 @@ if ! nmcli connection modify "$BRIDGE" \
 fi
 
 
-echo "Configuring $INTERFACE as member of bridge..."
-if ! nmcli connection modify "$OLD_CONNECTION" \
-    connection.master "$BRIDGE" \
+echo "Configuring $ETHERNET_NAME as member of bridge..."
+if ! nmcli connection modify "$ETHERNET_DESC" \
+    connection.master "$BRIDGE_NAME" \
     connection.slave-type bridge; then
     restore_old_connection 40 "Failed to configure bridge port."
 fi
 
 
-echo "Deactivating old connection $INTERFACE ... SSH will disappear."
-nmcli connection down "$OLD_CONNECTION" || true
+echo "Deactivating old connection $ETHERNET_NAME ... SSH will disappear."
+nmcli connection down "$ETHERNET_DESC" || true
 sleep 5
 
 
 echo "Activating bridge..."
-if ! nmcli connection up "$BRIDGE"; then
+if ! nmcli connection up "$BRIDGE_NAME"; then
     restore_old_connection 50 "Failed to activate bridge."
 fi
-sleep 5
+
+echo "10s sleep..."
+sleep 10
+
+echo "Activating $ETHERNET_DESC to comunicate thru bridge..."
+if ! nmcli connection up "$ETHERNET_DESC"; then
+    restore_old_connection 70 "Failed to activate bridge port."
+fi
+
+echo "10s sleep..."
+sleep 10
 
 echo
-echo "Waiting for bridge $BRIDGE to become fully UP..."
+echo "Waiting for bridge $BRIDGE_NAME to become fully UP..."
 BRIDGE_UP=false
 
 for i in {1..30}; do
-    NM_STATE=$(nmcli -g GENERAL.STATE device show "$BRIDGE" 2>/dev/null || true)
+    NM_STATE=$(nmcli -g GENERAL.STATE device show "$BRIDGE_NAME" 2>/dev/null || true)
     NM_STATE_CODE=$(echo "$NM_STATE" | awk '{print $1}')
-    LINK_STATE=$(cat "/sys/class/net/$BRIDGE/operstate" 2>/dev/null || true)
+    LINK_STATE=$(cat "/sys/class/net/$BRIDGE_NAME/operstate" 2>/dev/null || true)
 
     echo "Bridge NetworkManager state: $NM_STATE"
     echo "Bridge kernel state:        $LINK_STATE"
@@ -199,36 +209,16 @@ for i in {1..30}; do
     sleep 5
 done
 
-
 if [ "$BRIDGE_UP" != "true" ]; then
-    restore_old_connection 60 "TIMEOUT: Bridge $BRIDGE did not become fully UP."
+    restore_old_connection 60 "TIMEOUT: Bridge $BRIDGE_NAME did not become fully UP."
 fi
 
-
-echo "Bridge $BRIDGE is fully UP."
-
-
-echo "Activating $OLD_CONNECTION to comunicate thru bridge..."
-if ! nmcli connection up "$OLD_CONNECTION"; then
-    restore_old_connection 70 "Failed to activate bridge port."
-fi
-
-#
-# Give NetworkManager a short moment to settle routes
-# and DNS after DHCP.
-#
-sleep 5
-
-
-echo
-echo "Final NetworkManager state:"
-show_network_manager_status
-
+echo "Bridge $BRIDGE_NAME is fully UP. All seems good."
 
 echo
 echo "======================================================"
 echo "$(date '+%Y-%m-%d %H:%M:%S')"
-echo "Bridge migration finished successfully."
+echo "Network migration finished successfully."
 echo "======================================================"
 
 exit 0
