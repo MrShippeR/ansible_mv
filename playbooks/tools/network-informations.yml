@@ -1,0 +1,26 @@
+---
+- name: Get primary network information
+  hosts: all
+  gather_facts: yes
+  tasks:
+    - name: Find physical interfaces names
+      ansible.builtin.set_fact:
+        physical_interfaces: >-
+          {{
+            ansible_facts['interfaces']
+            | select('match', '^(eth|ens|enp|eno)')
+            | join(',')
+          }}
+    
+    - name: Show primary network details
+      ansible.builtin.debug:
+        msg:
+          - "MAC address: {{ ansible_facts['default_ipv4']['macaddress'] }}"
+          - "Primary IP: {{ ansible_facts['default_ipv4']['address'] }}"
+          - "Gateway: {{ ansible_facts['default_ipv4']['gateway'] }}"
+          - "Mask: {{ ansible_facts['default_ipv4']['netmask'] }}"
+          - "Broadcast: {{ ansible_facts['default_ipv4']['broadcast'] | default('N/A') }}"
+          - "FQDN: {{ ansible_facts['fqdn'] }}"
+          - "Primary interface: {{ ansible_facts['default_ipv4']['interface'] }}"
+          - "Physical interfaces: {{ physical_interfaces }}"
+

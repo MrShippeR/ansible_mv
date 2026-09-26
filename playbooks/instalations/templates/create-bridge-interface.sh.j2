@@ -157,6 +157,12 @@ if ! nmcli connection modify "$BRIDGE_NAME" \
     restore_old_connection 31 "Failed to configure IPv6 DHCP."
 fi
 
+echo "Disabling autoconnect for bridge $BRIDGE_NAME..."
+if ! nmcli connection modify "$BRIDGE_NAME" \
+    connection.autoconnect no; then
+
+    restore_old_connection 30 "Failed to disable bridge autoconnect."
+fi
 
 echo "Configuring $ETHERNET_NAME as member of bridge..."
 if ! nmcli connection modify "$ETHERNET_DESC" \

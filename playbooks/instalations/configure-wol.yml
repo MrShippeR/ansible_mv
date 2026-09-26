@@ -1,0 +1,170 @@
+---
+- name: Configure Wake-on-LAN for active Ethernet connections
+  hosts: all
+  become: true
+  gather_facts: true
+
+  tasks:
+
+    # ================================================================
+    # INSTALL ETHTOOL
+    # ================================================================
+
+    - name: Install ethtool
+      ansible.builtin.apt:
+        name: ethtool
+        state: present
+        update_cache: true
+
+    # ================================================================
+    # CHECK FOR NETWORK MANAGER
+    # ================================================================
+
+    - name: Check that NetworkManager is installed and available
+      ansible.builtin.command:
+        cmd: nmcli --version
+      register: nmcli_version
+      changed_when: false
+      failed_when: false
+
+    - name: Stop if NetworkManager is not available
+      ansible.builtin.fail:
+        msg: >-
+          nmcli was not found or NetworkManager is not available.
+          This playbook requires NetworkManager.
+      when: nmcli_version.rc != 0
+
+    # ================================================================
+    # DETECT ACTIVE ETHERNET CONNECTIONS
+    # ================================================================
+
+    - name: Get NetworkManager devices
+      ansible.builtin.command:
+        cmd: nmcli -t -f DEVICE,TYPE,STATE device status
+      register: nmcli_devices
+      changed_when: false
+
+    - name: Find active Ethernet interfaces
+      ansible.builtin.set_fact:
+        detected_active_ethernet_interfaces: >-
+          {{
+            nmcli_devices.stdout_lines
+            | map('split', ':')
+            | selectattr('1', 'equalto', 'ethernet')
+            | selectattr('2', 'equalto', 'connected')
+            | map('first')
+            | list
+          }}
+
+    - name: Stop if no active Ethernet interface was detected
+      ansible.builtin.fail:
+        msg: >-
+          No active Ethernet interface starting with 'enp' was detected.
+          Nothing to configure.
+      when: detected_active_ethernet_interfaces | length == 0
+
+    # ================================================================
+    # GET CONNECTION PROFILES
+    # ================================================================
+
+    - name: Get active NetworkManager connection profile for each interface
+      ansible.builtin.command:
+        cmd: nmcli -g GENERAL.CONNECTION device show {{ item }}
+      loop: "{{ detected_active_ethernet_interfaces }}"
+      register: active_connection_profiles
+      changed_when: false
+
+    - name: Build interface and connection profile list
+      ansible.builtin.set_fact:
+        ethernet_connections: >-
+          {{
+            ethernet_connections | default([]) +
+            [{
+              'interface': item.item,
+              'connection': item.stdout | trim
+            }]
+          }}
+      loop: "{{ active_connection_profiles.results }}"
+
+    - name: Validate connection profiles
+      ansible.builtin.assert:
+        that:
+          - item.connection | length > 0
+          - item.connection != "--"
+        fail_msg: >-
+          Could not determine the active NetworkManager connection profile
+          for interface {{ item.interface }}.
+      loop: "{{ ethernet_connections }}"
+
+    # ================================================================
+    # DISPLAY CURRENT WAKE-ON-LAN STATE
+    # ================================================================
+
+    - name: Check current Wake-on-LAN state
+      ansible.builtin.shell:
+        cmd: "ethtool {{ item.interface }} | grep -i wake-on"
+      loop: "{{ ethernet_connections }}"
+      register: current_wol_state
+      changed_when: false
+      failed_when: false
+
+    - name: Display detected Ethernet connections
+      ansible.builtin.debug:
+        msg:
+          - "======================================================"
+          - "BEFORE WAKE-ON-LAN CONFIGURATION"
+          - "======================================================"
+          - ""
+          - "Operating system:"
+          - "  {{ ansible_facts.distribution }}"
+          - ""
+          - "NetworkManager:"
+          - "  {{ nmcli_version.stdout | trim }}"
+          - ""
+          - "Detected active Ethernet connections:"
+          - "  Interface: {{ item.interface }}"
+          - "  Connection: {{ item.connection }}"
+          - "  Current: {{ current_wol_state.results[ansible_loop.index0].stdout | trim | default('(no Wake-on-LAN information)', true) }}"
+          - ""
+          - "d = disabled, g = enabled"
+          - ""
+      loop: "{{ ethernet_connections }}"
+      loop_control:
+        extended: true
+
+    # ================================================================
+    # USER CONFIRMATION
+    # ================================================================
+
+    - name: Confirm Wake-on-LAN configuration
+      ansible.builtin.pause:
+        prompt: |
+          Type 'yes' to enable Wake-on-LAN on all detected active Ethernet connections.
+          Type anything else to cancel.
+      register: user_approval_continue
+
+    - name: Stop if Wake-on-LAN configuration was not confirmed
+      ansible.builtin.fail:
+        msg: "Wake-on-LAN configuration cancelled by user."
+      when: user_approval_continue.user_input | lower != "yes"
+
+    # ================================================================
+    # ENABLE WAKE-ON-LAN
+    # ================================================================
+
+    - name: Enable Wake-on-LAN magic packets
+      ansible.builtin.command:
+        cmd: >-
+          nmcli connection modify "{{ item.connection }}"
+          802-3-ethernet.wake-on-lan magic
+      loop: "{{ ethernet_connections }}"
+      register: wol_configuration
+      changed_when: true
+
+    - name: Display completion message
+      ansible.builtin.debug:
+        msg:
+          - "======================================================"
+          - "Reboot is required before changes take effect. Reboot targeted machine and re-run"
+          - "this playbook to verifi that changes taked effect. Just answer no for no more modification."
+          - "======================================================"
