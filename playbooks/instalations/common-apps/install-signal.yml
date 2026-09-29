@@ -1,0 +1,10 @@
+---
+- name: Signal messenger
+  block:
+
+    - name: Install Signal-desktop
+      ansible.builtin.apt:
+        name:
+        - signal-desktop
+        state: present
+        update_cache: true

@@ -1,0 +1,25 @@
+---
+- name: WireGuard GUI
+  block:
+
+    - name: Install WireGuard tools
+      ansible.builtin.apt:
+        name: wireguard-tools
+        state: present
+        update_cache: true
+
+    - name: Download WireGuard GUI package
+      ansible.builtin.get_url:
+        url: "https://github.com/UnnoTed/wireguird/releases/download/v1.1.0/wireguird_amd64.deb"
+        dest: "/tmp/wireguird_amd64.deb"
+        mode: "0644"
+
+    - name: Install WireGuard GUI
+      ansible.builtin.apt:
+        deb: "/tmp/wireguird_amd64.deb"
+        state: present
+
+    - name: Remove WireGuard GUI installation package
+      ansible.builtin.file:
+        path: "/tmp/wireguird_amd64.deb"
+        state: absent

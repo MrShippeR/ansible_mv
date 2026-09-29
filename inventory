@@ -22,6 +22,15 @@ l340
 backup
 vostro14
 
+[servers:children]
+optiplex
+homelab
+backup
+
+[clients:children]
+l340
+vostro14
+
 [all:vars]
 # to get rid of warnings about different versions between machines, like Python3.12 and Python3.14
 ansible_python_interpreter=/usr/bin/python3

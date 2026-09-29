@@ -1,0 +1,209 @@
+---
+- name: Configure LightDM for unattended RustDesk access
+  hosts: all
+  become: true
+  gather_facts: true
+
+  vars:
+    lightdm_config_dir: /etc/lightdm/lightdm.conf.d
+    lightdm_config_file: /etc/lightdm/lightdm.conf.d/90-local.conf
+    lightdm_config_backup: /etc/lightdm/lightdm.conf.d/90-local.conf.ansible-backup
+
+  tasks:
+
+    - name: Verify supported distribution
+      ansible.builtin.assert:
+        that:
+          - ansible_facts["distribution"] in ['Ubuntu', 'Zorin']
+        fail_msg: >-
+          Unsupported distribution:
+          {{ ansible_facts["distribution"] }}
+          {{ ansible_facts["distribution_version"] }}.
+          This playbook supports only Ubuntu and Zorin OS.
+        success_msg: >-
+          Supported distribution detected:
+          {{ ansible_facts["distribution"] }}
+          {{ ansible_facts["distribution_version"] }}.
+
+    # ============================================================
+    # Display current configuration
+    # ============================================================
+
+    - name: Get current display manager
+      ansible.builtin.shell:
+        cmd: |
+          if [ -L /etc/systemd/system/display-manager.service ]; then
+            readlink -f /etc/systemd/system/display-manager.service
+          else
+            echo "not-configured"
+          fi
+      register: current_display_manager
+      changed_when: false
+
+    - name: Display current display manager
+      ansible.builtin.debug:
+        msg:
+          - "======================================================"
+          - "CURRENT DISPLAY MANAGER"
+          - "======================================================"
+          - "{{ current_display_manager.stdout }}"
+          - "======================================================"
+
+    # ============================================================
+    # Backup existing LightDM configuration
+    # ============================================================
+
+    - name: Check existing LightDM configuration
+      ansible.builtin.stat:
+        path: "{{ lightdm_config_file }}"
+      register: lightdm_config_stat
+
+    - name: Backup existing LightDM configuration
+      ansible.builtin.copy:
+        src: "{{ lightdm_config_file }}"
+        dest: "{{ lightdm_config_backup }}"
+        remote_src: true
+        owner: root
+        group: root
+        mode: "0644"
+        force: false
+      when: lightdm_config_stat.stat.exists
+
+    # ============================================================
+    # Install LightDM and Slick Greeter
+    # ============================================================
+
+    - name: Set answer for installer to LightDM
+      ansible.builtin.debconf:
+        name: lightdm
+        question: shared/default-x-display-manager
+        value: lightdm
+        vtype: select
+
+    - name: Install LightDM, Slick Greeter and xserver-xorg
+      ansible.builtin.apt:
+        name:
+          - lightdm
+          - slick-greeter
+          - xserver-xorg
+        state: present
+        update_cache: true
+
+    # ============================================================
+    # Configure LightDM
+    # ============================================================
+
+    - name: Create LightDM configuration directory
+      ansible.builtin.file:
+        path: "{{ lightdm_config_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Detect OS to properly set user-session variable in lightdm
+      ansible.builtin.set_fact:
+        lightdm_user_session: >-
+          {{
+            'ubuntu'
+            if ansible_facts["distribution"] == 'Ubuntu'
+            else 'zorin'
+          }}
+
+    - name: Configure LightDM for desktop environment and Slick Greeter
+      ansible.builtin.copy:
+        dest: "{{ lightdm_config_file }}"
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          [LightDM]
+          sessions-directory=/usr/share/lightdm/sessions:/usr/share/xsessions:/usr/share/wayland-sessions
+
+          [Seat:*]
+          greeter-session=slick-greeter
+          user-session={{ lightdm_user_session }}
+      notify:
+        - Reload systemd
+
+    # ============================================================
+    # Make LightDM the active display manager
+    # ============================================================
+
+    - name: Create symlink to display-manager.service
+      ansible.builtin.file:
+        src: /lib/systemd/system/lightdm.service
+        dest: /etc/systemd/system/display-manager.service
+        state: link
+        force: true
+
+    - name: Reload systemd daemon
+      ansible.builtin.systemd:
+        daemon_reload: true
+
+    # ============================================================
+    # Verify display manager
+    # ============================================================
+
+    - name: Check configured display manager
+      ansible.builtin.command:
+        cmd: readlink -f /etc/systemd/system/display-manager.service
+      register: configured_display_manager
+      changed_when: false
+
+    - name: Verify LightDM is the active display manager
+      ansible.builtin.assert:
+        that:
+          - configured_display_manager.stdout == "/usr/lib/systemd/system/lightdm.service"
+        fail_msg: >-
+          LightDM is not configured as the system display manager.
+          Current target: {{ configured_display_manager.stdout }}
+        success_msg: >-
+          LightDM is configured as the system display manager.
+
+    # ============================================================
+    # Set custom locking shortcut for users defined in loop
+    # ============================================================
+    - name: Configure LightDM lock shortcut for desktop users
+      become_user: "{{ item }}"
+      ansible.builtin.shell:
+        cmd: |
+          gsettings set org.gnome.settings-daemon.plugins.media-keys screensaver "[]"
+
+          dconf write /org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/lightdm-lock/name "'Lock screen (LightDM)'"
+          dconf write /org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/lightdm-lock/command "'dm-tool lock'"
+          dconf write /org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/lightdm-lock/binding "'<Super>l'"
+
+          gsettings set org.gnome.settings-daemon.plugins.media-keys custom-keybindings \
+            "['/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/lightdm-lock/']"
+      loop:
+        - shipper
+        #- vachovi
+
+    # ============================================================
+    # Final information
+    # ============================================================
+
+    - name: Display final information
+      ansible.builtin.debug:
+        msg:
+          - "======================================================"
+          - "LIGHTDM CONFIGURATION COMPLETE"
+          - "======================================================"
+          - ""
+          - "Display manager:"
+          - "  {{ configured_display_manager.stdout }}"
+          - ""
+          - "Expected setup:"
+          - "  Login screen : LightDM + Slick Greeter + X11"
+          - "  Desktop      : Ubuntu GNOME + Wayland"
+          - ""
+          - "A reboot is required for the new display manager"
+          - "to become active."
+          - "======================================================"
+
+  handlers:
+
+    - name: Reload systemd
+      ansible.builtin.systemd:
+        daemon_reload: true

@@ -1,0 +1,19 @@
+---
+- name: Discord desktop
+  block:
+
+    - name: Download Discord package
+      ansible.builtin.get_url:
+        url: "https://discord.com/api/downloads/distributions/app/installers/latest?channel=stable&platform=linux&arch=x64&format=deb"
+        dest: "/tmp/discord_linux_x64.deb"
+        mode: "0644"
+
+    - name: Install Discord package
+      ansible.builtin.apt:
+        deb: "/tmp/discord_linux_x64.deb"
+        state: present
+
+    - name: Remove deb file
+      ansible.builtin.file:
+        path: "/tmp/discord_linux_x64.deb"
+        state: absent

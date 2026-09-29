@@ -1,0 +1,61 @@
+---
+- name: GitHub installation and configuration for user MrShippeR
+  block:
+
+    - name: Install Git
+      ansible.builtin.apt:
+        name: git
+        state: present
+        update_cache: false
+
+    - name: Configure Git user name
+      become_user: "{{ ansible_user }}"
+      community.general.git_config:
+        name: user.name
+        scope: global
+        value: "Marek Vach"
+
+    - name: Configure Git user email
+      become_user: "{{ ansible_user }}"
+      community.general.git_config:
+        name: user.email
+        scope: global
+        value: "marek@vach.cz"
+
+    # ========================================
+    # GitHub SSH authentication
+    # ========================================
+
+    - name: Show SSH agent socket
+      ansible.builtin.debug:
+        var: ansible_env.SSH_AUTH_SOCK
+
+    - name: List SSH agent keys
+      become_user: "{{ ansible_user }}"
+      ansible.builtin.command:
+        cmd: ssh-add -L
+      register: github_ssh_agent
+      changed_when: false
+      failed_when: false
+
+    - name: Display SSH agent keys
+      ansible.builtin.debug:
+        msg: "{{ github_ssh_agent.stdout }}"
+
+
+
+
+    - name: Test GitHub SSH authentication
+      become_user: "{{ ansible_user }}"
+      ansible.builtin.command:
+        cmd: ssh -T -o BatchMode=yes -o StrictHostKeyChecking=accept-new git@github.com
+      register: github_ssh_test
+      changed_when: false
+      failed_when:
+        - github_ssh_test.rc != 1
+        - "'successfully authenticated' not in github_ssh_test.stderr"
+
+    - name: Display GitHub SSH authentication result
+      ansible.builtin.debug:
+        msg: "{{ github_ssh_test.stderr }}"
+

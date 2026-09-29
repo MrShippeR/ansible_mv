@@ -1,0 +1,105 @@
+---
+- name: Install common applications
+  hosts: all
+  become: true
+  gather_facts: true
+
+  vars:
+    applications_directory: "{{ playbook_dir }}/common-apps"
+
+  tasks:
+
+    - name: Load file with requirements apps
+      ansible.builtin.include_tasks:
+        file: "{{ applications_directory }}/requirements-apps.yml"
+
+    - name: Load files in directory common-apps
+      ansible.builtin.set_fact:
+        application_files: >-
+          {{
+            query(
+              'ansible.builtin.fileglob',
+              applications_directory + '/install-*.yml'
+            )
+            | sort
+          }}
+
+    - name: Build installation menu
+      ansible.builtin.set_fact:
+        application_menu: >-
+          {{
+            application_menu | default([]) + [
+              {
+                'name': (lookup('ansible.builtin.file', item) | from_yaml)[0].name,
+                'file': item
+              }
+            ]
+          }}
+      loop: "{{ application_files }}"
+      loop_control:
+        label: "{{ item | basename }}"
+
+    - name: User selection of apps to install
+      ansible.builtin.pause:
+        prompt: |
+          ============================================================
+          Common Applications
+          ============================================================
+
+          {% for application in application_menu %}
+          {{ '%2d' | format(loop.index) }}. {{ application.name }}
+          {% endfor %}
+
+          ============================================================
+          Enter application numbers separated by commas.
+          Example: 1,3,5
+          ============================================================
+      register: application_selection
+
+    - name: Parse user selection
+      ansible.builtin.set_fact:
+        selected_tokens: >-
+          {{
+            application_selection.user_input.split(',')
+            | map('trim')
+            | list
+          }}
+
+    - name: Verify that at least one application was selected
+      ansible.builtin.assert:
+        that:
+          - selected_tokens | length > 0
+          - selected_tokens | reject('equalto', '') | list | length > 0
+        fail_msg: "No application was selected."
+
+    - name: Validate application selection
+      ansible.builtin.assert:
+        that:
+          - item is match('^[0-9]+$')
+          - (item | int) >= 1
+          - (item | int) <= (application_menu | length)
+        fail_msg: >-
+          Invalid application selection '{{ item }}'.
+          Please enter numbers between 1 and {{ application_menu | length }}.
+      loop: "{{ selected_tokens }}"
+      loop_control:
+        label: "{{ item }}"
+
+    - name: Build selected application list
+      ansible.builtin.set_fact:
+        selected_applications: >-
+          {{
+            selected_applications | default([]) + [
+              application_menu[(item | int) - 1]
+            ]
+          }}
+      loop: "{{ selected_tokens }}"
+      loop_control:
+        label: "{{ item }}"
+
+    - name: Load file for install task
+      ansible.builtin.include_tasks:
+        file: "{{ item.file }}"
+      loop: "{{ selected_applications }}"
+      loop_control:
+        label: "{{ item.name }}"

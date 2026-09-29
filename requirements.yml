@@ -1,2 +1,2 @@
 collections:
-- name: community.general # wake-on-lan
+- name: community.general # NetworkManager, Git

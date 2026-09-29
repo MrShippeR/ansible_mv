@@ -1,0 +1,57 @@
+# view settings changes with terminal window running command: dconf watch /
+---
+- name: Set OS settings to prefered vaules for workstation
+  hosts: all
+  become: false
+  connection: local
+  tasks:
+
+  - name: Sound allow volume above 100 percent
+    dconf:
+      key: /org/gnome/desktop/sound/allow-volume-above-100-percent
+      value: "true"
+
+  - name: Power profile to Performance
+    dconf:
+      key: /org/gnome/shell/last-selected-power-profile
+      value: "'performance'"
+
+  - name: Battery power saver On when battery low
+    dconf:
+      key: /org/gnome/settings-daemon/plugins/power/power-saver-profile-on-low-battery
+      value: "true"
+
+  - name: Suspend system on battery to Off
+    dconf:
+      key: /org/gnome/settings-daemon/plugins/power/sleep-inactive-battery-type
+      value: "'nothing'"
+      
+  - name: Suspend system on ac addapter to Off
+    dconf:
+      key: /org/gnome/settings-daemon/plugins/power/sleep-inactive-ac-type
+      value: "'nothing'"
+
+  - name: Screen darkening On
+    dconf:
+      key: /org/gnome/settings-daemon/plugins/power/idle-dim
+      value: "true"
+
+  - name: Screen timeout 15min
+    dconf:
+      key: /org/gnome/desktop/session/idle-delay
+      value: "uint32 900"
+
+  - name: Power button press action to Power-off
+    dconf:
+      key: /org/gnome/settings-daemon/plugins/power/power-button-action
+      value: "'interactive'"
+
+  - name: Show battery percentage on bar
+    dconf:
+      key: /org/gnome/desktop/interface/show-battery-percentage
+      value: "true"
+
+  - name: Mouse scroll set to traditional
+    dconf:
+      key: /org/gnome/desktop/peripherals/mouse/natural-scroll
+      value: "false"
