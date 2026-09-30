@@ -26,29 +26,31 @@
     # GitHub SSH authentication
     # ========================================
 
-    - name: Show SSH agent socket
-      ansible.builtin.debug:
-        var: ansible_env.SSH_AUTH_SOCK
-
-    - name: List SSH agent keys
+    - name: Mirror SSH auth socket from local to remote console
       become_user: "{{ ansible_user }}"
       ansible.builtin.command:
-        cmd: ssh-add -L
+        cmd: ssh-add -l
+      environment:
+        SSH_AUTH_SOCK: "{{ lookup('env', 'SSH_AUTH_SOCK') }}"
       register: github_ssh_agent
       changed_when: false
       failed_when: false
 
     - name: Display SSH agent keys
       ansible.builtin.debug:
-        msg: "{{ github_ssh_agent.stdout }}"
-
-
-
+        msg:
+          - "rc={{ github_ssh_agent.rc }}"
+          - "stdout={{ github_ssh_agent.stdout }}"
+          - "stderr={{ github_ssh_agent.stderr }}"
+          - ""
+          - "User must be logged in session for SSH auth socket be avaiable"
 
     - name: Test GitHub SSH authentication
       become_user: "{{ ansible_user }}"
       ansible.builtin.command:
         cmd: ssh -T -o BatchMode=yes -o StrictHostKeyChecking=accept-new git@github.com
+      environment:
+        SSH_AUTH_SOCK: "{{ lookup('env', 'SSH_AUTH_SOCK') }}"
       register: github_ssh_test
       changed_when: false
       failed_when:
@@ -58,4 +60,3 @@
     - name: Display GitHub SSH authentication result
       ansible.builtin.debug:
         msg: "{{ github_ssh_test.stderr }}"
-
