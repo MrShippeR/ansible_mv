@@ -1,0 +1,9 @@
+---
+- name: Docker
+  block:
+
+    # default variables overwriten by group_vars/all.yml
+    - name: Install Docker
+      ansible.builtin.include_role:
+        name: geerlingguy.docker
+        

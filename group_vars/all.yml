@@ -2,3 +2,10 @@
 ansible_user: "shipper"
 ansible_become_user: "root"
 ansible_become_password: "{{ vault_sudo_password }}"
+
+# Galaxy Docker
+docker_packages:
+  - "docker-{{ docker_edition }}"
+  - "docker-{{ docker_edition }}-cli"
+docker_users:
+  - "{{ ansible_user }}"
