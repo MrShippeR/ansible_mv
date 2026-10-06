@@ -2,7 +2,7 @@
 roles:
   - name: geerlingguy.docker
     version: 8.0.0
-  - name: conorsch.arduino
+  #- name: nunogrl.ansible_role_arduino_cli
 
 collections:
   - name: community.general # NetworkManager, Git
