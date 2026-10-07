@@ -2,6 +2,7 @@
 - name: Arduino IDE
   vars:
     arduino_path: "/home/{{ ansible_user }}/Arduino"
+    appimage_name: "Arduino-IDE.AppImage"
     script_path: "/tmp/arduino-udev-setup.sh"
 
   block:
@@ -22,12 +23,28 @@
 
     - name: Download Arduino AppImage
       community.general.appimage:
-        name: "Arduino-IDE.AppImage"
+        name: "{{ appimage_name }}"
         install_dir: "{{ arduino_path }}"
         url: https://downloads.arduino.cc/arduino-ide/arduino-ide_latest_Linux_64bit.AppImage
         owner: "{{ ansible_user }}"
         group: "{{ ansible_user }}"
         state: "present"
+
+    - name: Download icon SVG file
+      get_url:
+        url: https://www.arduino.cc/wiki/static/arduino-app-76bd27c4ce7246825aceb8efe2871f7a.svg
+        dest: "{{ arduino_path }}/icon-arduino-ide.svg"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: "0444"
+
+    - name: Create .desktop entry from template
+      ansible.builtin.template:
+        src: "arduino-ide.desktop.j2"
+        dest: "/home/{{ ansible_user }}/.local/share/applications/arduino-ide.desktop"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: "0750"
         
     - name: Add user to dialout group
       ansible.builtin.user:
@@ -59,7 +76,7 @@
         mode: '0664'
       when: not arduino_udev_file.stat.exists
 
-    - name: Execute udev shell script
+    - name: Execute udev shell script to set permissions for various boards
       ansible.builtin.shell:
         cmd: "bash {{ script_path }}"
       when: not arduino_udev_file.stat.exists
@@ -73,9 +90,11 @@
     - name: Final info
       ansible.builtin.debug:
         msg:
-        - "Reboot must be done before user can reach USB port."
+        - "Reboot must be done before user can reach USB port and before icon show in menu."
         - "Because of AppArmor bug AppImage must be run with:"
         - "{{ arduino_path }}/Arduino-IDE.AppImage --no-sandbox"
+        - ""
+        - "(not need if you run thru .desktop entry):"
         
         
         

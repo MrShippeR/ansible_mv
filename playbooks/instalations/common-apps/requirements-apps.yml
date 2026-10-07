@@ -10,5 +10,6 @@
       - git
       - screen
       - nano
+      - gpg
     state: present
     update_cache: false

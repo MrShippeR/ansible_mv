@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Arduino IDE
+TryExec={{ arduino_path }}/{{ appimage_name }}
+Exec="{{ arduino_path }}/{{ appimage_name }}" --no-sandbox %U
+Icon={{ arduino_path }}/icon-arduino-ide.svg
+Terminal=false
+StartupWMClass=Arduino IDE
+Categories=Development;IDE;Electronics;

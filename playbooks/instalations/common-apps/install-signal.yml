@@ -1,10 +1,62 @@
 ---
-- name: Signal messenger
+- name: Signal
   block:
 
-    - name: Install Signal-desktop
+    - name: Check if Signal keyring file exists
+      ansible.builtin.stat:
+        path: /usr/share/keyrings/signal-desktop-keyring.gpg
+      register: signal_keyring_file
+
+    - name: Download repository .asc signing key
+      ansible.builtin.get_url:
+        url: https://updates.signal.org/desktop/apt/keys.asc
+        dest: /tmp/signal-desktop-key.asc
+        mode: '0644'
+      when: not signal_keyring_file.stat.exists
+
+    - name: Convert asc key to gpg
+      ansible.builtin.command:
+        cmd: >
+          gpg --dearmor
+          --output /usr/share/keyrings/signal-desktop-keyring.gpg
+          /tmp/signal-desktop-key.asc
+      args:
+        creates: /usr/share/keyrings/signal-desktop-keyring.gpg
+      when: not signal_keyring_file.stat.exists
+
+    - name: Set keyring file permissions
+      ansible.builtin.file:
+        path: /usr/share/keyrings/signal-desktop-keyring.gpg
+        owner: root
+        group: root
+        mode: '0644'
+      when: not signal_keyring_file.stat.exists
+
+
+
+    - name: Check if repository .source file exists in apt
+      ansible.builtin.stat:
+        path: /etc/apt/sources.list.d/signal-desktop.sources
+      register: signal_source_file
+
+    - name: Download repository .sources file and set permissions
+      ansible.builtin.get_url:
+        url: https://updates.signal.org/static/desktop/apt/signal-desktop.sources
+        dest: /etc/apt/sources.list.d/signal-desktop.sources
+        owner: root
+        group: root
+        mode: '0644'
+      when: not signal_source_file.stat.exists
+
+    - name: Update apt package cache
       ansible.builtin.apt:
-        name:
-        - signal-desktop
-        state: present
         update_cache: true
+
+    - name: Install Signal Desktop
+      ansible.builtin.apt:
+        name: signal-desktop
+        update_cache: false
+        state: present
+        
+        
+        
