@@ -92,7 +92,7 @@
         msg:
         - "Reboot must be done before user can reach USB port and before icon show in menu."
         - "Because of AppArmor bug AppImage must be run with:"
-        - "{{ arduino_path }}/Arduino-IDE.AppImage --no-sandbox"
+        - "{{ arduino_path }}/{{ appimage_name }} --no-sandbox"
         - ""
         - "(not need if you run thru .desktop entry):"
         

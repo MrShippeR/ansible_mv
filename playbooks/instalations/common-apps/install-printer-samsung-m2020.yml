@@ -1,0 +1,140 @@
+---
+- name: Printer Samsung M2020
+  vars:
+    driver_file_name: "uld_V1.00.39_01.17.tar.gz"
+    driver_url_download: "https://ftp.ext.hp.com/pub/softlib/software13/printers/SS/SL-C4010ND/{{ driver_file_name }}"
+    tmp_path: "/tmp/samsung-m2020"
+    pre_install_file_path: "{{ tmp_path }}/uld/noarch/pre_install.sh"
+    security_pkg_file_path: "{{ tmp_path }}/uld/noarch/security.pkg"
+    driver_install_file_path: "{{ tmp_path }}/uld/install.sh"
+
+  block:
+
+    - name: Create install directory in TMP
+      ansible.builtin.file:
+        path: "{{ tmp_path }}"
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0755'
+
+    - name: Download driver.tar.gz to TMP
+      get_url:
+        url: "{{ driver_url_download }}"
+        dest: "{{ tmp_path }}/{{ driver_file_name }}"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: "0664"
+        
+    - name: Extract archive
+      ansible.builtin.unarchive:
+        src: "{{ tmp_path }}/{{ driver_file_name }}"
+        dest: "{{ tmp_path }}"
+        remote_src: yes
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        
+    # ================================================================
+    # MANIPULATION WITH INSTALLATION SCRIPT, FILE pre_install.sh
+    # ================================================================        
+    
+    - name: Needed remove interactive code from installer. Check if file pre_install.sh exists.
+      ansible.builtin.stat:
+        path: "{{ pre_install_file_path }}"
+      register: pre_install_file
+      
+    - name: Stop if pre_install.sh does not exist
+      ansible.builtin.fail:
+        msg: "File {{ pre_install_file_path }} not found. Exiting."
+      when: not pre_install_file.stat.exists
+
+    - name: Remove prompt 1 from pre_install.sh
+      ansible.builtin.replace:
+        path: "{{ pre_install_file_path }}"
+        regexp: '(?m)^show_nls_message_no_nl .*Press.*\n(?:.*\n){7}'
+        replace: '\n# Removed interactive part1 with Ansible\n'
+
+    - name: Remove prompt 2 from pre_install.sh
+      ansible.builtin.replace:
+        path: "{{ pre_install_file_path }}"
+        regexp: '(?m)^if ! \[ "\$UNINSTALLMODE" \]; then\n(?:.*\n){2}'
+        replace: '# Removed interactive part2 with Ansible'
+
+    # ================================================================
+    # MANIPULATION WITH INSTALLATION SCRIPT, FILE security.pkg
+    # ================================================================   
+
+    - name: Check if file security.pkg exists.
+      ansible.builtin.stat:
+        path: "{{ security_pkg_file_path }}"
+      register: security_pkg_file
+      
+    - name: Stop if security.pkg does not exist
+      ansible.builtin.fail:
+        msg: "File {{ security_pkg_file_path }} not found. Exiting."
+      when: not security_pkg_file.stat.exists
+
+    - name: Set firewall prompt to YES in security.pkg
+      ansible.builtin.replace:
+        path: "{{ security_pkg_file_path }}"
+        regexp: '(?m)^[ \t]*show_nls_message_no_nl "\*\*\*\* If you want to configure firewall automatically,.*\n(?:.*\n){3}'
+        replace: '\n        # Configured to YES instead of prompt with Ansible \n        CONFIGURE_FIREWALL=y\n\n'
+
+    # ================================================================
+    # EXECUTE PRINTER INSTALLER
+    # ================================================================   
+
+    - name: Check if install.sh file exists.
+      ansible.builtin.stat:
+        path: "{{ driver_install_file_path }}"
+      register: install_file
+      
+    - name: Stop if install.sh does not exist
+      ansible.builtin.fail:
+        msg: "File {{ driver_install_file_path }} not found. Exiting."
+      when: not install_file.stat.exists
+
+    - name: Executing install.sh to install printer driver
+      ansible.builtin.command:
+        cmd: "bash {{ driver_install_file_path }}"
+      register: driver_install_result
+      failed_when: false
+      changed_when: driver_install_result.rc == 0
+
+    # ================================================================
+    # SHOW RESULTS AND POST INSTALL ACTIONS
+    # ================================================================ 
+
+    - name: Remove folder from TMP
+      file: 
+        path: "{{ tmp_path }}"
+        state: absent
+      when: driver_install_result.stderr | length == 0
+
+    - name: Installer display errors
+      ansible.builtin.debug:
+        var: driver_install_result.stderr_lines
+      when: driver_install_result.stderr | length > 0
+
+    - name: Installer display output texts
+      ansible.builtin.debug:
+        var: driver_install_result.stdout_lines
+
+    - name: Display driver installation status
+      ansible.builtin.debug:
+        msg: >-
+          {{ 'Driver installation completed successfully.'
+             if driver_install_result.rc == 0
+             else 'Driver installation failed, folder in TMP not removed for debugging, script exit code: ' ~
+                  driver_install_result.rc ~ '.' }}
+
+
+
+
+
+
+
+
+
+
+
