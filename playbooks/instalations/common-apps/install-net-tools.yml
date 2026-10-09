@@ -2,7 +2,7 @@
 - name: Net-tools
   block:
 
-    - name: Installing net-tools package
+    - name: Install net-tools package
       ansible.builtin.apt:
         name: net-tools
         update_cache: true
