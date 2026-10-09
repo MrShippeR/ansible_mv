@@ -1,5 +1,5 @@
 ---
-- name: Set default bashrc content to my usecase
+- name: Set default bash content to my usecase
   hosts: all
   become: false
   vars:
