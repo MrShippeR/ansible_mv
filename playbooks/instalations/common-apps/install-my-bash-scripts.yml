@@ -1,0 +1,58 @@
+---
+- name: Sync git my-bash-scripts
+  block:
+
+    - name: Create directory ~/opt/bin for custom scripts
+      ansible.builtin.file:
+        path: "/home/{{ ansible_user }}/opt/bin"
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0755'
+
+    - name: Check if Git is installed
+      ansible.builtin.command:
+        cmd: git --version
+      register: git_version
+      changed_when: false
+      failed_when: false
+
+    - name: Stop playbook if Git is not installed
+      ansible.builtin.fail:
+        msg: "Git is not installed. Please install Git before syncing with the remote repository."
+      when: git_version.rc != 0
+
+    - name: Clone or update my-bash-scripts repository
+      become_user: "{{ ansible_user }}"
+      ansible.builtin.git:
+        repo: "git@github.com:MrShippeR/my-bash-scripts.git"
+        dest: "/home/{{ ansible_user }}/opt/bin/my-bash-scripts"
+        update: true
+        accept_hostkey: true
+      environment:
+        SSH_AUTH_SOCK: "{{ lookup('env', 'SSH_AUTH_SOCK') }}"
+
+    - name: Create a symbolic link in the Documents folder
+      ansible.builtin.file:
+        src: "/home/{{ ansible_user }}/opt/bin/my-bash-scripts"
+        dest: "/home/{{ ansible_user }}/Dokumenty/my-bash-scripts"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        state: link
+        
+    - name: Make files executable
+      ansible.builtin.file:
+        path: "/home/{{ ansible_user }}/opt/bin/my-bash-scripts"
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0755'
+        recurse: yes
+    
+    
+    
+    
+    
+    
+    
+    

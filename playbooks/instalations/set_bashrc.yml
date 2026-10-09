@@ -1,13 +1,34 @@
 ---
 - name: Set default bashrc content to my usecase
-  hosts: l340
+  hosts: all
   become: false
+  vars:
+    home_path: "/home/{{ ansible_user }}"
 
   tasks:
   - name: Set default EDITOR to nano
     blockinfile:
-      path: "~/.bashrc"
+      path: "{{ home_path }}/.bashrc"
       prepend_newline: true
       content: "export EDITOR=nano"
       state: present
 
+  # ========================================
+  # Custom scripts
+  # ========================================
+
+  - name: Create directory ~/opt/bin for custom scripts
+    ansible.builtin.file:
+      path: "{{ home_path }}/opt/bin"
+      state: directory
+      owner: "{{ ansible_user }}"
+      group: "{{ ansible_user }}"
+      mode: '0755'
+      recurse: true
+
+  - name: Assign directory to PATH
+    blockinfile:
+      path: "{{ home_path }}/.profile"
+      prepend_newline: true
+      content: "PATH=$PATH:~/opt/bin"
+      state: present

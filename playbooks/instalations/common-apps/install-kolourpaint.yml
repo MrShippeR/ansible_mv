@@ -1,0 +1,8 @@
+---
+- name: Kolourpaint
+  block:
+
+    - name: Install snap Kolourpaint
+      community.general.snap:
+        name:
+          - kolourpaint

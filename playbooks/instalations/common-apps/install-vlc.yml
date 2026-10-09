@@ -1,0 +1,8 @@
+---
+- name: VLC player
+  block:
+
+    - name: Install snap Videolan VLC
+      community.general.snap:
+        name:
+          - vlc
