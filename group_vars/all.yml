@@ -5,7 +5,7 @@ ansible_become_password: "{{ vault_sudo_password }}"
 
 # Galaxy Docker
 docker_packages:
-  - "docker-{{ docker_edition }}"
-  - "docker-{{ docker_edition }}-cli"
+  - "docker-ce"
+  - "docker-ce-cli"
 docker_users:
   - "{{ ansible_user }}"
