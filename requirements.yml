@@ -4,6 +4,7 @@ roles:
     version: 8.0.0
   #- name: nunogrl.ansible_role_arduino_cli
 
+
 collections:
   - name: community.general # NetworkManager, Git
     version: 13.5.0

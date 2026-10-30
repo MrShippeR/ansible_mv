@@ -1,0 +1,23 @@
+---
+- name: VSCodium FOSS
+  block:
+
+    - name: Add VSCodium repo
+      deb822_repository:
+        name: vscodium
+        types: deb
+        uris: https://download.vscodium.com/debs
+        suites: vscodium
+        components: main
+        architectures: amd64
+        signed_by: https://gitlab.com/paulcarroty/vscodium-deb-rpm-repo/raw/master/pub.gpg
+        state: present
+
+    - name: Update apt cache
+      ansible.builtin.apt:
+        update_cache: true
+
+    - name: Install VSCodium
+      ansible.builtin.apt:
+        name: codium
+        state: present
