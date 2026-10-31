@@ -1,0 +1,23 @@
+---
+- name: RustDesk client
+  vars:
+    deb_url: "https://github.com/rustdesk/rustdesk/releases/download/1.5.1/rustdesk-1.5.1-x86_64.deb"
+    install_file_path: "/tmp/rustdesk-1.5.1-x86_64.deb"
+    
+  block:
+
+    - name: Download RustDesk client package
+      ansible.builtin.get_url:
+        url: "{{ deb_url }}"
+        dest: "{{ install_file_path }}"  
+        mode: "0644"
+
+    - name: Install RustDesk package
+      ansible.builtin.apt:
+        deb: "{{ install_file_path }}" 
+        state: present
+
+    - name: Remove RustDesk installation package
+      ansible.builtin.file:
+        path: "{{ install_file_path }}" 
+        state: absent
