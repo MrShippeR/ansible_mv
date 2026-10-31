@@ -1,0 +1,80 @@
+---
+- name: Download, install and configure geo-nft
+  hosts: all
+  become: true
+  vars:
+    app_path: "/etc/nftables/geo-nft"
+
+  tasks:
+
+    # ================================================================
+    # DOWNLOAD
+    # ================================================================
+
+    - name: Get nftables version
+      ansible.builtin.command:
+        cmd: nft --version
+      register: nftables_version
+      changed_when: false
+
+#    - name: Display nftables version
+#      ansible.builtin.debug:
+#        msg: "{{ nftables_version.stdout }}"
+
+    - name: Create directory {{ app_path }}
+      ansible.builtin.file:
+        path: "{{ app_path }}"
+        state: directory
+
+    - name: Clone git repository
+      ansible.builtin.git:
+        repo: "https://github.com/wirefalls/geo-nft.git"
+        dest: "{{ app_path }}"
+        force: true
+    
+    - name: Set folder ownership, group and permissions
+      ansible.builtin.file:
+        path: "{{ app_path }}"
+        recurse: yes
+        owner: root
+        group: root
+        mode: '0744'
+
+    - name: Symbolic link to make program callable by geo-nft command
+      ansible.builtin.file:
+        src: "{{ app_path }}/geo-nft.sh"
+        dest: /usr/sbin/geo-nft
+        owner: root
+        group: root
+        state: link
+        force: true
+
+    - name: Create link to systemd timer
+      ansible.builtin.file:
+        src: "{{ app_path }}/systemd/geo-update.timer"
+        dest: /etc/systemd/system/geo-update.timer
+        owner: root
+        group: root
+        state: link
+        force: true
+
+    - name: Create link to systemd service
+      ansible.builtin.file:
+        src: "{{ app_path }}/systemd/geo-update.service"
+        dest: /etc/systemd/system/geo-update.service
+        owner: root
+        group: root
+        state: link
+        force: true    
+
+    - name: Enable systemd timer for automatic updates of geo-nft 
+      ansible.builtin.systemd_service:
+        name: geo-update.timer
+        state: started
+        enabled: true
+
+    - name: Make first run to download geoip database
+      ansible.builtin.command:
+        cmd: geo-nft
+
+# navázat s částí pro import pravidel do nftables
