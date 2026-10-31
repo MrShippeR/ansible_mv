@@ -1,5 +1,19 @@
 ---
 - name: Docker
+  vars:
+    docker_daemon_options:
+      firewall-backend: "nftables"
+      log-driver: "local"
+      log-opts:
+        max-size: "10m"
+        max-file: "3"
+        compress: "true"
+    docker_packages:
+      - "docker-ce"
+      - "docker-ce-cli"
+    docker_users:
+      - "{{ ansible_user }}"
+
   block:
 
     # default variables overwriten by group_vars/all.yml
