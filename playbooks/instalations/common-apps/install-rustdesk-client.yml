@@ -3,6 +3,7 @@
   vars:
     deb_url: "https://github.com/rustdesk/rustdesk/releases/download/1.5.1/rustdesk-1.5.1-x86_64.deb"
     install_file_path: "/tmp/rustdesk-1.5.1-x86_64.deb"
+    config_file_path: "/tmp/RustDesk2.toml"
     
   block:
 
@@ -21,3 +22,40 @@
       ansible.builtin.file:
         path: "{{ install_file_path }}" 
         state: absent
+
+    - name: Save RustDesk client ID to variable
+      ansible.builtin.command:
+        cmd: "rustdesk --get-id"
+      become_user: "{{ ansible_user }}"
+      register: rustdesk_client_id
+      failed_when: false
+
+    - name: Create config file from template
+      ansible.builtin.template:
+        src: "RustDesk2.toml.j2"
+        dest: "{{ config_file_path }}"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: "0600"
+
+    - name: Load config file to RustDesk client
+      ansible.builtin.command:
+        cmd: "rustdesk --import-config {{ config_file_path }}"
+      become_user: "{{ ansible_user }}"
+      register: rustdesk_client_id
+      failed_when: false
+
+    - name: Remove generated config file
+      ansible.builtin.file:
+        path: "{{ config_file_path }}" 
+        state: absent
+
+    - name: Start and enable RustDesk via systemd service 
+      ansible.builtin.systemd_service:
+        name: rustdesk
+        state: started
+        enabled: true
+
+    - name: Display RustDesk client ID
+      ansible.builtin.debug:
+        msg: "RustDesk ID je {{ rustdesk_client_id }}"

@@ -1,0 +1,19 @@
+rendezvous_server = 'vach.cz:21116'
+nat_type = 1
+serial = 0
+unlock_pin = ''
+trusted_devices = ''
+
+[options]
+direct-server = 'Y'
+temporary-password-length = '10'
+local-ip-addr = '{{ ansible_facts['default_ipv4']['address'] }}'
+allow-remove-wallpaper = 'Y'
+av1-test = 'Y'
+relay-server = 'vach.cz'
+verification-method = 'use-permanent-password'
+allow-remote-config-modification = 'Y'
+custom-rendezvous-server = 'vach.cz'
+key = '{{ rustdesk_key }}'
+direct-access-port = '21120'
+2fa = '{"name":"{{ rustdesk_client_id.stdout | trim }}","secret":[{{ rustdesk_2fa_secret }}],"digits":6,"created_at":1774662522107}'
