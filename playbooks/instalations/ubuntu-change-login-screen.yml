@@ -14,7 +14,7 @@
     - name: Verify supported distribution
       ansible.builtin.assert:
         that:
-          - ansible_facts["distribution"] in ['Ubuntu', 'Zorin']
+          - ansible_facts["distribution"] in ['Ubuntu', 'Zorin OS']
         fail_msg: >-
           Unsupported distribution:
           {{ ansible_facts["distribution"] }}
