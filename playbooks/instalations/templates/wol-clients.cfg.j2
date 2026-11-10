@@ -1,0 +1,7 @@
+# Generated with ansible, execute ansible task to update data. TAB separated values.
+# hostname        MAC address         IP address
+{% for group in ['optiplex', 'homelab', 'backup'] %}
+{% for host in groups[group] %}
+{{ group }}{{ '\t\t' }}{{ hostvars[host]['primary_mac_adress'] }}{{ '\t' }}{{ host }}
+{% endfor %}
+{% endfor %}

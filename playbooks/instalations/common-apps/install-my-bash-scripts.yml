@@ -2,6 +2,12 @@
 - name: Sync git my-bash-scripts
   block:
 
+    - name: Install wakeonlan package
+      ansible.builtin.apt:
+        name: wakeonlan
+        update_cache: true
+        state: present
+
     - name: Create directory ~/opt/bin for custom scripts
       ansible.builtin.file:
         path: "/home/{{ ansible_user }}/opt/bin"
@@ -9,18 +15,6 @@
         owner: "{{ ansible_user }}"
         group: "{{ ansible_user }}"
         mode: '0755'
-
-    - name: Check if Git is installed
-      ansible.builtin.command:
-        cmd: git --version
-      register: git_version
-      changed_when: false
-      failed_when: false
-
-    - name: Stop playbook if Git is not installed
-      ansible.builtin.fail:
-        msg: "Git is not installed. Please install Git before syncing with the remote repository."
-      when: git_version.rc != 0
 
     - name: Clone or update my-bash-scripts repository
       become_user: "{{ ansible_user }}"
@@ -32,6 +26,15 @@
       environment:
         SSH_AUTH_SOCK: "{{ lookup('env', 'SSH_AUTH_SOCK') }}"
 
+    - name: Generate Wake-on-LAN clients configuration
+      ansible.builtin.template:
+        src: wol-clients.cfg.j2
+        dest: "/home/{{ ansible_user }}/opt/bin/my-bash-scripts/wol-clients.cfg"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0755'
+      delegate_to: localhost
+
     - name: Create a symbolic link in the Documents folder
       ansible.builtin.file:
         src: "/home/{{ ansible_user }}/opt/bin/my-bash-scripts"
@@ -39,7 +42,7 @@
         owner: "{{ ansible_user }}"
         group: "{{ ansible_user }}"
         state: link
-        
+
     - name: Make files executable
       ansible.builtin.file:
         path: "/home/{{ ansible_user }}/opt/bin/my-bash-scripts"
