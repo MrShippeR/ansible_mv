@@ -52,7 +52,9 @@
         mode: '0755'
         recurse: yes
     
-    
+    - name: Reminder messsage
+      ansible.builtin.debug:
+        msg: "To be able to system call mywol, playbook set_bash.yml must be executed too."
     
     
     
