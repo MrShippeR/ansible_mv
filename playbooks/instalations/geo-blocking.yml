@@ -21,6 +21,17 @@
 #      ansible.builtin.debug:
 #        msg: "{{ nftables_version.stdout }}"
 
+    - name: Install application requirements
+      ansible.builtin.apt:
+        name:
+          - mawk
+          - curl
+          - grep
+          - gzip
+          - sed
+        state: present
+        update_cache: false
+
     - name: Create directory {{ app_path }}
       ansible.builtin.file:
         path: "{{ app_path }}"
