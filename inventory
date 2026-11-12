@@ -15,11 +15,11 @@
 
 [ubuntu_os:children]
 homelab
+backup
 
 [zorin_os:children]
 optiplex
 l340
-backup
 vostro14
 
 [servers:children]
