@@ -20,7 +20,7 @@
       become_user: "{{ ansible_user }}"
       ansible.builtin.git:
         repo: "git@github.com:MrShippeR/my-bash-scripts.git"
-        dest: "/home/{{ ansible_user }}/opt/bin/my-bash-scripts"
+        dest: "/home/{{ ansible_user }}/opt/bin"
         update: true
         accept_hostkey: true
       environment:
@@ -29,7 +29,7 @@
     - name: Generate Wake-on-LAN clients configuration
       ansible.builtin.template:
         src: wol-clients.cfg.j2
-        dest: "/home/{{ ansible_user }}/opt/bin/my-bash-scripts/wol-clients.cfg"
+        dest: "/home/{{ ansible_user }}/opt/bin/wol-clients.cfg"
         owner: "{{ ansible_user }}"
         group: "{{ ansible_user }}"
         mode: '0755'
@@ -37,7 +37,7 @@
 
     - name: Create a symbolic link in the Documents folder
       ansible.builtin.file:
-        src: "/home/{{ ansible_user }}/opt/bin/my-bash-scripts"
+        src: "/home/{{ ansible_user }}/opt/bin"
         dest: "/home/{{ ansible_user }}/Dokumenty/my-bash-scripts"
         owner: "{{ ansible_user }}"
         group: "{{ ansible_user }}"
@@ -45,7 +45,7 @@
 
     - name: Make files executable
       ansible.builtin.file:
-        path: "/home/{{ ansible_user }}/opt/bin/my-bash-scripts"
+        path: "/home/{{ ansible_user }}/opt/bin"
         state: directory
         owner: "{{ ansible_user }}"
         group: "{{ ansible_user }}"
