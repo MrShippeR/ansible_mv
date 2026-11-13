@@ -1,11 +1,17 @@
 ---
 - name: RustDesk client
   vars:
-    deb_url: "https://github.com/rustdesk/rustdesk/releases/download/1.5.1/rustdesk-1.5.1-x86_64.deb"
-    install_file_path: "/tmp/rustdesk-1.5.1-x86_64.deb"
-    config_file_path: "/tmp/RustDesk2.toml"
+    deb_url: "https://github.com/rustdesk/rustdesk/releases/download/1.5.3/rustdesk-1.5.3-x86_64.deb"
+    install_file_path: "/tmp/rustdesk-1.5.3-x86_64.deb"
+    config_file_path: "/root/.config/rustdesk/RustDesk2.toml"
+    selfhosted_server_url: "vach.cz"
+    client_port: "21120"
     
   block:
+
+    # ============================================================
+    # Installation
+    # ============================================================
 
     - name: Download RustDesk client package
       ansible.builtin.get_url:
@@ -23,6 +29,104 @@
         path: "{{ install_file_path }}" 
         state: absent
 
+    - name: Start RustDesk via systemd service to generate initial config file 
+      ansible.builtin.systemd_service:
+        name: rustdesk
+        state: started
+
+    # ============================================================
+    # Backup original settings
+    # ============================================================
+
+    - name: Create RustDesk backup directory in TMP
+      ansible.builtin.file:
+        path: "/tmp/rustdesk-client"
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+
+    - name: Check if RustDesk configuration exists under root
+      ansible.builtin.stat:
+        path: "{{ config_file_path }}"
+      register: rustdesk_config
+
+    - name: Backup original RustDesk configuration
+      ansible.builtin.copy:
+        src: "{{ config_file_path }}"
+        dest: "/tmp/rustdesk-client/RustDesk2.toml"
+        remote_src: true
+        owner: root
+        group: root
+        mode: "0600"
+      when: rustdesk_config.stat.exists
+
+    # ============================================================
+    # Settings via command line
+    # ============================================================
+
+    - name: Set RustDesk client password
+      ansible.builtin.command:
+        cmd: "rustdesk --password {{ rustdesk_password }}"
+      register: rustdesk_client_id
+      failed_when: false
+
+    # ============================================================
+    # Settings via config file
+    # ============================================================
+
+    - name: Stop RustDesk service before editing config file
+      ansible.builtin.systemd_service:
+        name: rustdesk
+        state: stopped
+
+    - name: Allow Direct connect to IP
+      ansible.builtin.lineinfile:
+        path: "{{ config_file_path }}"
+        regexp: "^\\s*direct-server\\s*="
+        line: "direct-server = 'Y'"
+
+    - name: Set Direct port to 21120
+      ansible.builtin.lineinfile:
+        path: "{{ config_file_path }}"
+        regexp: "^\\s*direct-access-port\\s*="
+        line: "direct-access-port = '{{ client_port }}'"
+
+    - name: Set ID server
+      ansible.builtin.lineinfile:
+        path: "{{ config_file_path }}"
+        regexp: "^\\s*custom-rendezvous-server\\s*="
+        line: "custom-rendezvous-server = '{{ selfhosted_server_url }}'"
+
+    - name: Set Relay server
+      ansible.builtin.lineinfile:
+        path: "{{ config_file_path }}"
+        regexp: "^\\s*relay-server\\s*="
+        line: "relay-server = '{{ selfhosted_server_url }}'"
+
+    - name: Set server public key
+      ansible.builtin.lineinfile:
+        path: "{{ config_file_path }}"
+        regexp: "^\\s*key\\s*="
+        line: "key = '{{ rustdesk_key }}'"
+
+    - name: Set verification method to password only
+      ansible.builtin.lineinfile:
+        path: "{{ config_file_path }}"
+        regexp: "^\\s*verification-method\\s*="
+        line: "verification-method = 'use-permanent-password'"
+      notify: Restart RustDesk service
+
+    - name: Start and enable autostart of RustDesk service to apply new configuration
+      ansible.builtin.systemd_service:
+        name: rustdesk
+        state: started
+        enabled: true
+
+    # ============================================================
+    # Display client ID
+    # ============================================================
+
     - name: Save RustDesk client ID to variable
       ansible.builtin.command:
         cmd: "rustdesk --get-id"
@@ -30,32 +134,6 @@
       register: rustdesk_client_id
       failed_when: false
 
-    - name: Create config file from template
-      ansible.builtin.template:
-        src: "RustDesk2.toml.j2"
-        dest: "{{ config_file_path }}"
-        owner: "{{ ansible_user }}"
-        group: "{{ ansible_user }}"
-        mode: "0600"
-
-    - name: Load config file to RustDesk client
-      ansible.builtin.command:
-        cmd: "rustdesk --import-config {{ config_file_path }}"
-      become_user: "{{ ansible_user }}"
-      register: rustdesk_client_id
-      failed_when: false
-
-    - name: Remove generated config file
-      ansible.builtin.file:
-        path: "{{ config_file_path }}" 
-        state: absent
-
-    - name: Start and enable RustDesk via systemd service 
-      ansible.builtin.systemd_service:
-        name: rustdesk
-        state: started
-        enabled: true
-
     - name: Display RustDesk client ID
       ansible.builtin.debug:
-        msg: "RustDesk ID je {{ rustdesk_client_id }}"
+        msg: "RustDesk ID je {{ rustdesk_client_id.stdout }}"
