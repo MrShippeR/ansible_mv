@@ -1,6 +1,11 @@
 ---
 - name: Docker
   vars:
+    role_docker_path_main_file: "/home/shipper/Dokumenty/ansible_mv/galaxy_roles/geerlingguy.docker/tasks/main.yml"
+    docker_edition: 'ce'
+    docker_packages:
+      - "docker-{{ docker_edition }}"
+      - "docker-{{ docker_edition }}-cli"
     docker_daemon_options:
       firewall-backend: "nftables"
       log-driver: "local"
@@ -13,7 +18,12 @@
 
   block:
 
-    # default variables overwriten by group_vars/all.yml
+    - name: Add Zorin OS support to geerlingguy.docker role definition
+      ansible.builtin.lineinfile:
+        path: "{{ role_docker_path_main_file }}"
+        insertafter: "- include_tasks: setup-Debian.yml"
+        line: "  when: ansible_facts.os_family == 'Zorin OS'"
+
     - name: Install Docker
       ansible.builtin.include_role:
         name: geerlingguy.docker
