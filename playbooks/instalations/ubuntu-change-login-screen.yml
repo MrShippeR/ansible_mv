@@ -1,3 +1,4 @@
+
 ---
 - name: Configure LightDM for unattended RustDesk access
   hosts: all
@@ -19,7 +20,6 @@
           Unsupported distribution:
           {{ ansible_facts["distribution"] }}
           {{ ansible_facts["distribution_version"] }}.
-          This playbook supports only Ubuntu and Zorin OS.
         success_msg: >-
           Supported distribution detected:
           {{ ansible_facts["distribution"] }}
@@ -70,15 +70,19 @@
       when: lightdm_config_stat.stat.exists
 
     # ============================================================
-    # Install LightDM and Slick Greeter
+    # Preconfigure LightDM
     # ============================================================
 
-    - name: Set answer for installer to LightDM
+    - name: Preconfigure LightDM as default display manager
       ansible.builtin.debconf:
         name: lightdm
         question: shared/default-x-display-manager
         value: lightdm
         vtype: select
+
+    # ============================================================
+    # Install LightDM and Slick Greeter
+    # ============================================================
 
     - name: Install LightDM, Slick Greeter and xserver-xorg
       ansible.builtin.apt:
@@ -88,6 +92,26 @@
           - xserver-xorg
         state: present
         update_cache: true
+
+    # ============================================================
+    # Explicitly configure default display manager
+    # ============================================================
+
+    - name: Set LightDM as default display manager
+      ansible.builtin.debconf:
+        name: lightdm
+        question: shared/default-x-display-manager
+        value: lightdm
+        vtype: select
+
+    - name: Reconfigure LightDM using debconf
+      ansible.builtin.command:
+        cmd: dpkg-reconfigure -f noninteractive lightdm
+      changed_when: false
+
+    - name: Reload systemd daemon
+      ansible.builtin.systemd:
+        daemon_reload: true
 
     # ============================================================
     # Configure LightDM
@@ -123,47 +147,43 @@
           [Seat:*]
           greeter-session=slick-greeter
           user-session={{ lightdm_user_session }}
-      notify:
-        - Reload systemd
 
     # ============================================================
-    # Make LightDM the active display manager
+    # Verify default display manager
     # ============================================================
 
-    - name: Create symlink to display-manager.service
-      ansible.builtin.file:
-        src: /lib/systemd/system/lightdm.service
-        dest: /etc/systemd/system/display-manager.service
-        state: link
-        force: true
-
-    - name: Reload systemd daemon
-      ansible.builtin.systemd:
-        daemon_reload: true
-
-    # ============================================================
-    # Verify display manager
-    # ============================================================
-
-    - name: Check configured display manager
+    - name: Check configured systemd display manager
       ansible.builtin.command:
         cmd: readlink -f /etc/systemd/system/display-manager.service
       register: configured_display_manager
+      changed_when: false
+
+    - name: Check X11 default display manager
+      ansible.builtin.command:
+        cmd: cat /etc/X11/default-display-manager
+      register: x11_display_manager
       changed_when: false
 
     - name: Verify LightDM is the active display manager
       ansible.builtin.assert:
         that:
           - configured_display_manager.stdout == "/usr/lib/systemd/system/lightdm.service"
+          - x11_display_manager.stdout | trim == "/usr/sbin/lightdm"
         fail_msg: >-
-          LightDM is not configured as the system display manager.
-          Current target: {{ configured_display_manager.stdout }}
+          LightDM is not properly configured as the default display manager.
+
+          Systemd:
+          {{ configured_display_manager.stdout }}
+
+          X11:
+          {{ x11_display_manager.stdout | default('not-configured') }}
         success_msg: >-
-          LightDM is configured as the system display manager.
+          LightDM is correctly configured as the default display manager.
 
     # ============================================================
-    # Set custom locking shortcut for users defined in loop
+    # Set custom locking shortcut for desktop users
     # ============================================================
+
     - name: Configure LightDM lock shortcut for desktop users
       become_user: "{{ item }}"
       ansible.builtin.shell:
@@ -194,16 +214,13 @@
           - "Display manager:"
           - "  {{ configured_display_manager.stdout }}"
           - ""
+          - "X11 default display manager:"
+          - "  {{ x11_display_manager.stdout | trim }}"
+          - ""
           - "Expected setup:"
           - "  Login screen : LightDM + Slick Greeter + X11"
-          - "  Desktop      : Ubuntu GNOME + Wayland"
+          - "  Desktop      : {{ lightdm_user_session }} + Wayland"
           - ""
           - "A reboot is required for the new display manager"
           - "to become active."
           - "======================================================"
-
-  handlers:
-
-    - name: Reload systemd
-      ansible.builtin.systemd:
-        daemon_reload: true
