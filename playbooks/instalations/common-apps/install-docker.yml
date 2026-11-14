@@ -26,16 +26,32 @@
       delegate_to: localhost
       become: false
 
+    - name: Enable IPv4 forwarding permanently
+      ansible.posix.sysctl:
+        name: net.ipv4.ip_forward
+        value: '1'
+        state: present
+        sysctl_file: /etc/sysctl.conf
+        reload: true
+
     - name: Install Docker
       ansible.builtin.include_role:
         name: geerlingguy.docker
    
+    - name: Disable Docker socket and service for server hosts
+      ansible.builtin.systemd_service:
+        name: "{{ item }}"
+        enabled: false
+      loop:
+        - docker.socket
+        - docker.service
+      when: >
+        inventory_hostname in ['homelab', 'optiplex', 'backup']
+        or group_names | intersect(['homelab', 'optiplex', 'backup']) | length > 0
+
     - name: Display completion message
       ansible.builtin.debug:
         msg:
           - "======================================================"
           - "If docker won't start via systemctl, run in manually by sudo dockerd"
-          - "Don't forget to disable autostart on luks encrypted data enviroment."
-          - "systemctl disable docker.service"
-          - "systemctl disable docker.socket"
           - "======================================================"     
