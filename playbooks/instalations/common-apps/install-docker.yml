@@ -23,8 +23,19 @@
         path: "{{ role_docker_path_main_file }}"
         insertafter: "- include_tasks: setup-Debian.yml"
         line: "  when: ansible_facts.os_family == 'Zorin OS'"
+      delegate_to: localhost
+      become: false
 
     - name: Install Docker
       ansible.builtin.include_role:
         name: geerlingguy.docker
-        
+   
+    - name: Display completion message
+      ansible.builtin.debug:
+        msg:
+          - "======================================================"
+          - "If docker won't start via systemctl, run in manually by sudo dockerd"
+          - "Don't forget to disable autostart on luks encrypted data enviroment."
+          - "systemctl disable docker.service"
+          - "systemctl disable docker.socket"
+          - "======================================================"     
