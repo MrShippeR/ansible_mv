@@ -115,7 +115,6 @@
         path: "{{ config_file_path }}"
         regexp: "^\\s*verification-method\\s*="
         line: "verification-method = 'use-permanent-password'"
-      notify: Restart RustDesk service
 
     - name: Start and enable autostart of RustDesk service to apply new configuration
       ansible.builtin.systemd_service:
