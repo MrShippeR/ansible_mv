@@ -26,13 +26,19 @@
       delegate_to: localhost
       become: false
 
-    - name: Enable IPv4 forwarding permanently
-      ansible.posix.sysctl:
-        name: net.ipv4.ip_forward
-        value: '1'
-        state: present
-        sysctl_file: /etc/sysctl.conf
-        reload: true
+    - name: Add IPv4 forwarding for Docker
+      ansible.builtin.copy:
+        dest: /etc/sysctl.d/99-docker-forwarding.conf
+        content: |
+          net.ipv4.ip_forward = 1
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Apply IPv4 forwarding by restarting sysctl.conf
+      ansible.builtin.command:
+        cmd: sysctl -p /etc/sysctl.conf
+      changed_when: false
 
     - name: Install Docker
       ansible.builtin.include_role:
