@@ -1,10 +1,10 @@
 ---
 - name: RustDesk client
   vars:
-    deb_url: "https://github.com/rustdesk/rustdesk/releases/download/1.5.3/rustdesk-1.5.3-x86_64.deb"
-    install_file_path: "/tmp/rustdesk-1.5.3-x86_64.deb"
+    deb_url: "https://github.com/rustdesk/rustdesk/releases/download/nightly/rustdesk-unattended-wayland-1.4.9-x86_64.deb"
+    install_file_path: "/tmp/rustdesk-unattended-wayland-1.4.9-x86_64.deb"
     config_file_path: "/root/.config/rustdesk/RustDesk2.toml"
-    selfhosted_server_url: "vach.cz"
+    selfhosted_server_url: "192.168.10.1"
     client_port: "21120"
     
   block:
