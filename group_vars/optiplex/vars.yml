@@ -1,1 +1,2 @@
 ---
+ethernet_main_interface: "br0"
