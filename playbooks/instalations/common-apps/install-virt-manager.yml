@@ -1,0 +1,20 @@
+---
+- name: Virtual Machine manager
+  vars:
+    directory_path: "/home/{{ ansible_user }}/KVM"
+    
+  block:
+
+    - name: Create KVM directory in HOME
+      ansible.builtin.file:
+        path: "{{ directory_path }}"
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0750'
+
+    - name: Install virt-manager package
+      ansible.builtin.apt:
+        name: virt-manager
+        update_cache: true
+        state: present
