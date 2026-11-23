@@ -26,7 +26,7 @@
       delegate_to: localhost
       become: false
 
-    - name: Add IPv4 forwarding for Docker
+    - name: Add IPv4 forwarding for Docker in sysctl
       ansible.builtin.copy:
         dest: /etc/sysctl.d/99-docker-forwarding.conf
         content: |
@@ -35,7 +35,17 @@
         group: root
         mode: '0644'
 
-    - name: Apply IPv4 forwarding by restarting sysctl.conf
+    - name: Disable IPv6 in sysctl
+      ansible.builtin.copy:
+        dest: /etc/sysctl.d/99-disable-ipv6.conf
+        content: |
+          net.ipv6.conf.all.disable_ipv6 = 1
+          net.ipv6.conf.default.disable_ipv6 = 1
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Apply changes by restarting sysctl.conf
       ansible.builtin.command:
         cmd: sysctl --system
       changed_when: false

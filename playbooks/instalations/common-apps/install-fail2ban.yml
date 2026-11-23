@@ -1,0 +1,51 @@
+---
+- name: Fail2ban
+  vars:
+    path_jaild: "/etc/fail2ban/jail.d"
+
+
+  block:
+
+    - name: Install fail2ban package
+      ansible.builtin.apt:
+        name: fail2ban
+        update_cache: true
+        state: present
+
+    - name: Create file customization.local
+      ansible.builtin.copy:
+        dest: "{{ path_jaild }}/customisation.local"
+        content: |
+          [DEFAULT]
+          banaction = nftables
+          banaction_allports = nftables[type=allports]
+          bantime = 1h
+          ignoreip = 85.207.119.6 192.168.10.1/24 192.168.20.1/24
+          findtime  = 60m
+          maxretry = 10
+          backend = systemd
+
+    - name: Disable IPv6 in sysctl
+      ansible.builtin.copy:
+        dest: /etc/sysctl.d/99-disable-ipv6.conf
+        content: |
+          net.ipv6.conf.all.disable_ipv6 = 1
+          net.ipv6.conf.default.disable_ipv6 = 1
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Apply changes by restarting sysctl.conf
+      ansible.builtin.command:
+        cmd: sysctl --system
+      changed_when: false
+
+    - name: Reload service to apply changes
+      ansible.builtin.systemd_service:
+        name: fail2ban
+        state: reloaded
+        enabled: true
+
+    - name: Post install info
+      ansible.builtin.debug:
+        msg: "Fail2Ban is installed and enabled. Do not forget to enable per service jails in /etc/fail2ban/jail.d like bitwarden.conf"
