@@ -7,6 +7,8 @@
       - "docker-{{ docker_edition }}"
       - "docker-{{ docker_edition }}-cli"
     docker_daemon_options:
+      ipv6: false
+      ip6tables: false
       firewall-backend: "nftables"
       log-driver: "local"
       log-opts:
@@ -35,9 +37,9 @@
         group: root
         mode: '0644'
 
-    - name: Disable IPv6 in sysctl
+    - name: Disable IPv6 system wide in sysctl
       ansible.builtin.copy:
-        dest: /etc/sysctl.d/99-disable-ipv6.conf
+        dest: /etc/sysctl.d/99-disable-system-ipv6.conf
         content: |
           net.ipv6.conf.all.disable_ipv6 = 1
           net.ipv6.conf.default.disable_ipv6 = 1

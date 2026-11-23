@@ -33,6 +33,20 @@
         regexp: '^\s*#?\s*firewall_backend\s*='
         line: 'firewall_backend = "nftables"'
 
+    - name: Disable IPv6 for interface virbr0 in sysctl
+      ansible.builtin.copy:
+        dest: /etc/sysctl.d/99-libvirt-disable-virbr0-ipv6.conf
+        content: |
+          net.ipv6.conf.virbr0.disable_ipv6=1
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Apply changes by restarting sysctl.conf
+      ansible.builtin.command:
+        cmd: sysctl --system
+      changed_when: false
+
     - name: Add user to libvirt group
       ansible.builtin.user:
         name: "{{ ansible_user }}"
