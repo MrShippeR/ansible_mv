@@ -33,6 +33,7 @@
         regexp: '^\s*#?\s*firewall_backend\s*='
         line: 'firewall_backend = "nftables"'
 
+    # doesn't work :( => rules in nftables are still created by libvirt
     - name: Disable IPv6 for interface virbr0 in sysctl
       ansible.builtin.copy:
         dest: /etc/sysctl.d/99-libvirt-disable-virbr0-ipv6.conf
@@ -40,6 +41,15 @@
           net.ipv6.conf.virbr0.disable_ipv6=1
           net.ipv6.conf.virbr0.accept_ra=0
           net.ipv6.conf.virbr0.autoconf=0
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Disable IPv6 for interface {{ ethernet_main_interface }} in sysctl
+      ansible.builtin.copy:
+        dest: "/etc/sysctl.d/99-system-disable-{{ ethernet_main_interface }}-ipv6.conf"
+        content: |
+          net.ipv6.conf.{{ ethernet_main_interface }}.disable_ipv6=1
         owner: root
         group: root
         mode: '0644'
