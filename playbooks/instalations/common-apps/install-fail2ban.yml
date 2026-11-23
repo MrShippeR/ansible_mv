@@ -25,6 +25,7 @@
           maxretry = 10
           backend = systemd
 
+    # duplicity task even in install-docker.yml
     - name: Disable IPv6 system wide in sysctl
       ansible.builtin.copy:
         dest: /etc/sysctl.d/99-system-disable-ipv6.conf

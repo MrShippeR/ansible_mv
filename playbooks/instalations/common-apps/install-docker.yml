@@ -37,9 +37,10 @@
         group: root
         mode: '0644'
 
+    # duplicity task even in install-fail2ban.yml
     - name: Disable IPv6 system wide in sysctl
       ansible.builtin.copy:
-        dest: /etc/sysctl.d/99-disable-system-ipv6.conf
+        dest: /etc/sysctl.d/99-system-disable-ipv6.conf
         content: |
           net.ipv6.conf.all.disable_ipv6 = 1
           net.ipv6.conf.default.disable_ipv6 = 1

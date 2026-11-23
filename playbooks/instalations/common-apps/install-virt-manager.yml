@@ -54,6 +54,16 @@
         group: root
         mode: '0644'
 
+    # USB-C ethernet hub for Home Assistant OS, redirected from system to libvirt
+    - name: Disable IPv6 for interface enx68da73a186ba in sysctl
+      ansible.builtin.copy:
+        dest: "/etc/sysctl.d/99-system-disable-enx68da73a186ba-ipv6.conf"
+        content: |
+          net.ipv6.conf.enx68da73a186ba.disable_ipv6=1
+        owner: root
+        group: root
+        mode: '0644'
+
     - name: Apply changes by restarting sysctl.conf
       ansible.builtin.command:
         cmd: sysctl --system
