@@ -5,16 +5,30 @@
     
   block:
 
-    - name: Create KVM directory in HOME
+    - name: Create KVM directory in /media
       ansible.builtin.file:
-        path: "{{ directory_path }}"
+        path: /media/kvm
         state: directory
         owner: "{{ ansible_user }}"
         group: "{{ ansible_user }}"
-        mode: '0750'
+        mode: '0755'
+
+    - name: Create link to KVM directory in HOME
+      ansible.builtin.file:
+        src: "/media/kvm"
+        dest: "/home/{{ ansible_user }}/kvm"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        state: link
 
     - name: Install virt-manager package
       ansible.builtin.apt:
         name: virt-manager
         update_cache: true
         state: present
+
+    - name: Change libvirt firewall service to nftables
+      ansible.builtin.lineinfile:
+        path: "/etc/libvirt/network.conf"
+        regexp: '^\s*#?\s*firewall_backend\s*='
+        line: 'firewall_backend = "nftables"'
