@@ -38,6 +38,8 @@
         dest: /etc/sysctl.d/99-libvirt-disable-virbr0-ipv6.conf
         content: |
           net.ipv6.conf.virbr0.disable_ipv6=1
+          net.ipv6.conf.virbr0.accept_ra=0
+          net.ipv6.conf.virbr0.autoconf=0
         owner: root
         group: root
         mode: '0644'
