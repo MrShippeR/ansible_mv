@@ -32,3 +32,13 @@
         path: "/etc/libvirt/network.conf"
         regexp: '^\s*#?\s*firewall_backend\s*='
         line: 'firewall_backend = "nftables"'
+
+    - name: Add user to libvirt group
+      ansible.builtin.user:
+        name: "{{ ansible_user }}"
+        groups: libvirt
+        append: yes
+
+    - name: Post install info
+      ansible.builtin.debug:
+        msg: "To change assigned IPs in virbr0 (IP range, static IP) run command: virsh net-edit default"
