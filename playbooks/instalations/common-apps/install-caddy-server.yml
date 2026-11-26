@@ -1,0 +1,69 @@
+---
+- name: Caddy server
+  vars:
+    keyring_tmp: "/tmp/caddy-gpg.key"
+    keyring_file: "/usr/share/keyrings/caddy-stable-archive-keyring.gpg"
+    sources_file: "/etc/apt/sources.list.d/caddy-stable.list"
+
+
+  block:
+
+    - name: Check if Caddy keyring file exists
+      ansible.builtin.stat:
+        path: "{{ keyring_file }}"
+      register: caddy_keyring_file
+
+    - name: Download repository gpg.key
+      ansible.builtin.get_url:
+        url: https://dl.cloudsmith.io/public/caddy/stable/gpg.key
+        dest: "{{ keyring_tmp }}"
+        mode: '0644'
+      when: not caddy_keyring_file.stat.exists
+
+    - name: Convert gpg.key to {{ keyring_file }}
+      ansible.builtin.command:
+        cmd: >
+          gpg --dearmor 
+          --output {{ keyring_file }}
+          {{ keyring_tmp }}
+      args:
+        creates: "{{ keyring_file }}"
+      when: not caddy_keyring_file.stat.exists
+
+    - name: Set keyring file permissions
+      ansible.builtin.file:
+        path: "{{ keyring_file }}"
+        owner: root
+        group: root
+        mode: '0644'
+      when: not caddy_keyring_file.stat.exists
+
+
+
+    - name: Check if repository .source file exists in apt
+      ansible.builtin.stat:
+        path: "{{ sources_file }}"
+      register: caddy_source_file
+
+    - name: Download repository .sources file and set permissions
+      ansible.builtin.get_url:
+        url: https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt
+        dest: "{{ sources_file }}"
+        owner: root
+        group: root
+        mode: '0644'
+      when: not caddy_source_file.stat.exists
+
+    - name: Update apt cache
+      ansible.builtin.apt:
+        update_cache: true
+
+    - name: Install Caddy server
+      ansible.builtin.apt:
+        name: caddy
+        state: present
+
+    - name: Installs a local Certificate Authority for domains like app.localhost
+      ansible.builtin.command:
+        cmd: caddy trust
+      changed_when: false
